@@ -1,0 +1,7 @@
+# Keep local documentation out of GitHub by default.
+docs/
+
+# Runtime/generated cache
+cover_cache/
+__pycache__/
+*.pyc
