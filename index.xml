@@ -57,6 +57,7 @@
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/SampleLodeManager.lua}\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 ReaPack Distribution\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 This repository is intended to be published through ReaPack.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Japanese notes for versioning, {\f1 index.xml}, and distribution workflow: {\f1 SampleLodeManager/docs/reapack_operations_ja.md}.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 The distribution package includes:\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/SampleLodeManager.lua}\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/src/**/*.lua}\par}
@@ -67,7 +68,7 @@
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt} (MIT)\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt} (SQLite public domain statement)\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Repository Policy\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Local design/dev notes under {\f1 docs/} are excluded from Git by default via {\f1 .gitignore}.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Local design/dev notes under repository-root {\f1 docs/} are excluded from Git by default via {\f1 .gitignore} ({\f1 /docs/} only). Tracked docs such as {\f1 SampleLodeManager/docs/} are versioned normally.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Keep runtime/distribution files under {\f1 SampleLodeManager/}.\sa180\par}
 }
 ]]></description>
