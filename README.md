@@ -20,6 +20,8 @@ Install them via ReaPack before running `SampleLodeManager/SampleLodeManager.lua
 
 This repository is intended to be published through ReaPack.
 
+Japanese notes for versioning, `index.xml`, and distribution workflow: `SampleLodeManager/docs/reapack_operations_ja.md`.
+
 The distribution package includes:
 
 - `SampleLodeManager/SampleLodeManager.lua`
@@ -36,5 +38,5 @@ Bundled third-party notices are in:
 
 ## Repository Policy
 
-- Local design/dev notes under `docs/` are excluded from Git by default via `.gitignore`.
+- Local design/dev notes under repository-root `docs/` are excluded from Git by default via `.gitignore` (`/docs/` only). Tracked docs such as `SampleLodeManager/docs/` are versioned normally.
 - Keep runtime/distribution files under `SampleLodeManager/`.
