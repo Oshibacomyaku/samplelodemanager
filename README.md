@@ -10,11 +10,11 @@ Sample browser and manager for REAPER.
 - js_ReaScriptAPI
 
 These dependencies are not bundled in this repository.
-Install them via ReaPack before running `SampleLodeManager.lua`.
+Install them via ReaPack before running `SampleLodeManager/SampleLodeManager.lua`.
 
 ## Entry Script
 
-- `SampleLodeManager.lua`
+- `SampleLodeManager/SampleLodeManager.lua`
 
 ## ReaPack Distribution
 
@@ -22,19 +22,19 @@ This repository is intended to be published through ReaPack.
 
 The distribution package includes:
 
-- `SampleLodeManager.lua`
-- `src/**/*.lua`
-- `src/python/**/*.py`
-- `licenses/*.txt`
+- `SampleLodeManager/SampleLodeManager.lua`
+- `SampleLodeManager/src/**/*.lua`
+- `SampleLodeManager/src/python/**/*.py`
+- `SampleLodeManager/licenses/*.txt`
 
 ## Third-Party License Notes
 
 Bundled third-party notices are in:
 
-- `licenses/lsqlite3complete_LICENSE.txt` (MIT)
-- `licenses/sqlite_PUBLIC_DOMAIN.txt` (SQLite public domain statement)
+- `SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt` (MIT)
+- `SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt` (SQLite public domain statement)
 
 ## Repository Policy
 
 - Local design/dev notes under `docs/` are excluded from Git by default via `.gitignore`.
-- Keep runtime/distribution files in repository root, `src/`, and `licenses/`.
+- Keep runtime/distribution files under `SampleLodeManager/`.
