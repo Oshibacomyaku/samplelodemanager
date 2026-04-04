@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<index version="1">
+  <metadata>
+    <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Sample Lode Manager\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Sample browser and manager for REAPER.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Requirements (not bundled)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaPack\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaImGui\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab SWS Extension\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab js_ReaScriptAPI\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 These dependencies are not bundled in this repository. Install them via ReaPack before running {\f1 SampleLodeManager.lua}.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Entry Script\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager.lua}\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 ReaPack Distribution\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This repository is intended to be published through ReaPack.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The distribution package includes:\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager.lua}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 src/**/*.lua}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 src/python/**/*.py}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 licenses/*.txt}\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Third-Party License Notes\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Bundled third-party notices are in:\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 licenses/lsqlite3complete_LICENSE.txt} (MIT)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 licenses/sqlite_PUBLIC_DOMAIN.txt} (SQLite public domain statement)\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Repository Policy\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Local design/dev notes under {\f1 docs/} are excluded from Git by default via {\f1 .gitignore}.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Keep runtime/distribution files in repository root, {\f1 src/}, and {\f1 licenses/}.\sa180\par}
+}
+]]></description>
+  </metadata>
+</index>
