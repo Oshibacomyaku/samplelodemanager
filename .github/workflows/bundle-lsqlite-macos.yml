@@ -7,6 +7,11 @@ name: Bundle lsqlite3complete (macOS)
 on:
   workflow_dispatch:
 
+# leafo/gh-actions-lua はビルド成果を Actions Cache に保存する。Cache API が 400 や一時障害だと
+# 「Failed to save / restore」でジョブ全体が失敗することがあるので、キャッシュを切る。
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
@@ -26,6 +31,7 @@ jobs:
       - uses: leafo/gh-actions-lua@v12
         with:
           luaVersion: "5.4.7"
+          buildCache: "false"
       - uses: leafo/gh-actions-luarocks@v6
       - name: Install lsqlite3complete
         run: luarocks install lsqlite3complete
