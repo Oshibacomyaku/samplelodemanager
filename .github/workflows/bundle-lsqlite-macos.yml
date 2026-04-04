@@ -22,17 +22,27 @@ jobs:
             dest: darwin64
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: leafo/gh-actions-lua@v10
+      # v10/v5 は Node 非推奨警告があり、macOS ランナーで不安定なことがある。v12/v6 を推奨。
+      - uses: leafo/gh-actions-lua@v12
         with:
           luaVersion: "5.4.7"
-      - uses: leafo/gh-actions-luarocks@v5
+      - uses: leafo/gh-actions-luarocks@v6
       - name: Install lsqlite3complete
         run: luarocks install lsqlite3complete
       - name: Copy artifact
+        shell: bash
         run: |
-          SO="$HOME/.luarocks/lib/lua/5.4/lsqlite3complete.so"
-          test -f "$SO"
-          cp "$SO" "${{ github.workspace }}/lsqlite3complete-${{ matrix.dest }}.so"
+          set -euo pipefail
+          # leafo/gh-actions-luarocks はワークスペース配下の .luarocks/ に入れることが多く、$HOME/.luarocks だけ見ると失敗する
+          SO="$(find "${GITHUB_WORKSPACE}" "${HOME}" -name 'lsqlite3complete.so' -type f 2>/dev/null | head -1 || true)"
+          if [[ -z "${SO}" ]]; then
+            echo "lsqlite3complete.so not found; debug paths:"
+            find "${GITHUB_WORKSPACE}" -maxdepth 4 -type d 2>/dev/null || true
+            luarocks list
+            exit 1
+          fi
+          echo "Using: ${SO}"
+          cp "${SO}" "${GITHUB_WORKSPACE}/lsqlite3complete-${{ matrix.dest }}.so"
       - uses: actions/upload-artifact@v4
         with:
           name: lsqlite-${{ matrix.dest }}
