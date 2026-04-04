@@ -7,7 +7,7 @@
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Optional bundled SQLite: see bin/README.md.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Bundled SQLite bindings (lsqlite3complete): MIT \u8212- see licenses/lsqlite3complete_LICENSE.txt. SQLite engine: public domain \u8212- see licenses/sqlite_PUBLIC_DOMAIN.txt. Layout: bin/README.md.\par}
 }
 ]]></description>
       </metadata>
@@ -53,22 +53,33 @@
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab SWS Extension\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab js_ReaScriptAPI\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 These dependencies are not bundled in this repository. Install them via ReaPack before running {\f1 SampleLodeManager/SampleLodeManager.lua}.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Bundled with the ReaPack package (this repo)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The ReaPack distribution also ships {\b SQLite native bindings} ({\f1 lsqlite3complete}) for:\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Windows x64} \u8212- {\f1 SampleLodeManager/bin/win64/lsqlite3complete.dll}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b macOS Intel} \u8212- {\f1 SampleLodeManager/bin/darwin64/lsqlite3complete.so}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b macOS Apple Silicon} \u8212- {\f1 SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so}\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Other REAPER builds (for example {\b Win32} or {\b Linux}) do not currently ship a bundled binary here; you still need a compatible {\f1 lsqlite3} / {\f1 lsqlite3complete} / {\f1 sqlite3} module loadable from Lua if you use those platforms.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Entry Script\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/SampleLodeManager.lua}\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 ReaPack Distribution\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 This repository is intended to be published through ReaPack.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Japanese notes for versioning, {\f1 index.xml}, and distribution workflow: {\f1 SampleLodeManager/docs/reapack_operations_ja.md}.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 The distribution package includes:\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/SampleLodeManager.lua}\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/src/**/*.lua}\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/src/python/**/*.py}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/*.txt}\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/*.txt}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/bin/**} (platform-specific {\f1 lsqlite3complete} binaries declared in {\f1 @provides})\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Third-Party License Notes\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Bundled third-party notices are in:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt} (MIT)\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt} (SQLite public domain statement)\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The {\b prebuilt {\f1 lsqlite3complete} binaries} in {\f1 SampleLodeManager/bin/} are Lua bindings that typically {\b link against or embed SQLite}. In this repository we ship {\b full license texts} next to the script (ReaPack installs them with the package):\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b {\f1 SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt}} \u8212- {\b MIT} (applies to the {\b lsqlite3complete} binding code as packaged on LuaRocks; redistribution generally requires keeping that notice with the software).\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b {\f1 SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt}} \u8212- short statement aligned with {\b SQLite\u8217's public-domain dedication} (see also {\field{\*\fldinst{HYPERLINK "https://www.sqlite.org/copyright.html"}}{\fldrslt{\ul
+sqlite.org/copyright
+}}}
+).\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If you {\b rebuild} the native module from other sources, replace or amend these files so they match {\b your} actual upstream, and keep distributing the corresponding notices with the binaries.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This section is {\b not legal advice}; when in doubt, confirm with your own counsel or upstream terms.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Repository Policy\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Local design/dev notes under repository-root {\f1 docs/} are excluded from Git by default via {\f1 .gitignore} ({\f1 /docs/} only). Tracked docs such as {\f1 SampleLodeManager/docs/} are versioned normally.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Local design/dev notes under repository-root {\f1 docs/} are excluded from Git by default via {\f1 .gitignore} ({\f1 /docs/} only).\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Keep runtime/distribution files under {\f1 SampleLodeManager/}.\sa180\par}
 }
 ]]></description>
