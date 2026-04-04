@@ -2,6 +2,13 @@
 
 開発者向けの **ReaPack 運用メモ**（バージョン・`index.xml`・配布の流れ）は、リポジトリ直下の **`docs/reapack_operations_ja.md`** に置く運用です（**`/docs/` は `.gitignore` 対象**で、既定では Git に含めません）。CI の挙動は **`.github/workflows/deploy.yml`** を参照してください。
 
+## Licensing (redistribution)
+
+- **`../licenses/lsqlite3complete_LICENSE.txt`** — **MIT**（`lsqlite3complete` バインディング側。ReaPack では `licenses/*.txt` が `@provides` 済みでパッケージに同梱される）。
+- **`../licenses/sqlite_PUBLIC_DOMAIN.txt`** — **SQLite** 本体の扱い（公式の public domain 宣言の要約・参照）。
+
+別ソースからバイナリを作り直した場合は、**実際の上流に合わせて**ライセンス文を更新し、同梱を続けてください。
+
 Place **one** native module per folder (built against **REAPER’s embedded Lua 5.4**, same OS ABI as the user’s REAPER install):
 
 | Folder | `reaper.GetAppVersion()` hint | Expected file | ReaPack `platform` |

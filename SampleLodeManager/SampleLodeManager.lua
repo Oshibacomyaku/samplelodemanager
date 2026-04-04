@@ -2,7 +2,7 @@
 -- @version 0.2.0
 -- @author motit
 -- @changelog Bundle lsqlite3complete (win64) for ReaPack. Run workflow "Bundle lsqlite3complete (macOS)" to add darwin64 / darwin-arm64 .so files.
--- @about Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Optional bundled SQLite: see bin/README.md.
+-- @about Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Bundled SQLite bindings (lsqlite3complete): MIT — see licenses/lsqlite3complete_LICENSE.txt. SQLite engine: public domain — see licenses/sqlite_PUBLIC_DOMAIN.txt. Layout: bin/README.md.
 -- @provides [main] SampleLodeManager.lua
 -- @provides [nomain] src/**/*.lua
 -- @provides [nomain] src/python/**/*.py

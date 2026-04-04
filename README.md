@@ -40,10 +40,14 @@ The distribution package includes:
 
 ## Third-Party License Notes
 
-Bundled third-party notices are in:
+The **prebuilt `lsqlite3complete` binaries** in `SampleLodeManager/bin/` are Lua bindings that typically **link against or embed SQLite**. In this repository we ship **full license texts** next to the script (ReaPack installs them with the package):
 
-- `SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt` (MIT)
-- `SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt` (SQLite public domain statement)
+- **`SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt`** — **MIT** (applies to the **lsqlite3complete** binding code as packaged on LuaRocks; redistribution generally requires keeping that notice with the software).
+- **`SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt`** — short statement aligned with **SQLite’s public-domain dedication** (see also [sqlite.org/copyright](https://www.sqlite.org/copyright.html)).
+
+If you **rebuild** the native module from other sources, replace or amend these files so they match **your** actual upstream, and keep distributing the corresponding notices with the binaries.
+
+This section is **not legal advice**; when in doubt, confirm with your own counsel or upstream terms.
 
 ## Repository Policy
 
