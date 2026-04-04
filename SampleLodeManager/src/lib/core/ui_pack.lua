@@ -351,6 +351,11 @@ function M.draw(win_w)
   r.ImGui_Spacing(ctx)
 
   local pack_has_any_cover = cover_art and state.runtime and state.runtime.cover_art
+  if pack_has_any_cover and state.ui and state.ui.cover_auto_download == true then
+    -- Keep pack thumbnails progressing even before a pack is selected.
+    state.runtime.cover_art.ctx_ref = ctx
+    cover_art.process_queue(state.runtime.cover_art.queue, 1)
+  end
 
   local function open_pack_bulk_tag_window(p)
     if not (p and tonumber(p.id)) then return end
@@ -439,7 +444,7 @@ function M.draw(win_w)
               r.ImGui_TableNextColumn(ctx)
               local url = p.cover_url and tostring(p.cover_url) or ""
               if url ~= "" then
-                cover_art.draw_cell(ctx, state.runtime.cover_art, p.id, url, PACK_LIST_THUMB, false)
+                cover_art.draw_cell(ctx, state.runtime.cover_art, p.id, url, PACK_LIST_THUMB, true)
               elseif r.ImGui_Dummy then
                 r.ImGui_Dummy(ctx, PACK_LIST_THUMB, PACK_LIST_THUMB)
               end
