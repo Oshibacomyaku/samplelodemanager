@@ -1,5 +1,7 @@
 # Bundled SQLite (lsqlite3complete) — Lua 5.4 / REAPER 7+
 
+ReaPack の **バージョン上げ・`index.xml`・インポート URL** などの全体運用は、リポジトリの **`docs/reapack_operations_ja.md`** にまとめてあります。
+
 Place **one** native module per folder (built against **REAPER’s embedded Lua 5.4**, same OS ABI as the user’s REAPER install):
 
 | Folder | `reaper.GetAppVersion()` hint | Expected file | ReaPack `platform` |
