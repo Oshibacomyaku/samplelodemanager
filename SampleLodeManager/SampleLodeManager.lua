@@ -1,12 +1,13 @@
 -- @description Sample Lode Manager
 -- @version 0.2.0
 -- @author motit
--- @changelog Prepare ReaPack distribution metadata.
--- @about Sample browser and manager for REAPER. Requires ReaImGui. Optional Python workers are bundled.
+-- @changelog Bundle lsqlite3complete (win64) for ReaPack. Run workflow "Bundle lsqlite3complete (macOS)" to add darwin64 / darwin-arm64 .so files.
+-- @about Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Optional bundled SQLite: see bin/README.md.
 -- @provides [main] SampleLodeManager.lua
 -- @provides [nomain] src/**/*.lua
 -- @provides [nomain] src/python/**/*.py
 -- @provides [nomain] licenses/*.txt
+-- @provides [win64 nomain] bin/win64/lsqlite3complete.dll
 -- Sample Lode Manager
 
 local r = reaper
@@ -38,16 +39,55 @@ package.path = package.path
   .. ";" .. script_path .. "src/lib/*/?.lua"
   .. ";" .. package_builtin .. "/?.lua"
 
--- SQLite native modules (lsqlite3/sqlite3) may require DLL lookup via package.cpath.
--- If you place lsqlite3.dll / sqlite3.dll under ./bin, this will allow `require()` to find it.
-package.cpath = package.cpath
-  .. ";" .. script_path .. "bin/?.dll"
-  .. ";" .. script_path .. "?.dll"
+-- SQLite native modules (lsqlite3 / lsqlite3complete / sqlite3): prepend OS-specific bundle dir first.
+-- Layout (Lua 5.4 / REAPER 7+): bin/win64/, bin/darwin64/, bin/darwin-arm64/ — see bin/README.md.
+local function bundled_lsqlite_cpath_prefix()
+  local gv = ""
+  if r.GetAppVersion then
+    gv = tostring(r.GetAppVersion() or ""):lower()
+  end
+  local sub, pat
+  if gv:find("macos%-arm64", 1) then
+    sub, pat = "bin/darwin-arm64/", "?.so"
+  elseif gv:find("osx64", 1) then
+    sub, pat = "bin/darwin64/", "?.so"
+  elseif gv:find("/x64", 1) then
+    sub, pat = "bin/win64/", "?.dll"
+  elseif gv:match("^%d+%.%d+$") then
+    -- e.g. "7.67" without arch suffix => 32-bit Windows (ReaScript docs)
+    sub, pat = "bin/win32/", "?.dll"
+  elseif gv:find("linux", 1) then
+    if gv:find("aarch64", 1) then
+      sub, pat = "bin/linux-aarch64/", "?.so"
+    else
+      sub, pat = "bin/linux-x86_64/", "?.so"
+    end
+  end
+  if sub then
+    return script_path .. sub .. pat
+  end
+  return nil
+end
+
+do
+  local prefix = bundled_lsqlite_cpath_prefix()
+  local base = package.cpath or ""
+  if prefix then
+    package.cpath = prefix .. ";" .. base
+  else
+    package.cpath = base
+  end
+  package.cpath = package.cpath
+    .. ";" .. script_path .. "bin/?.dll"
+    .. ";" .. script_path .. "bin/?.so"
+    .. ";" .. script_path .. "?.dll"
+    .. ";" .. script_path .. "?.so"
+end
 
 -- LuaRocks-installed modules (e.g. lsqlite3complete) need their own path additions.
 do
-  local appdata = os.getenv("APPDATA") or ""
   local lua_ver = (_VERSION or ""):match("(%d+%.%d+)") or "5.4"
+  local appdata = os.getenv("APPDATA") or ""
   if appdata ~= "" then
     local luarocks_root = appdata .. "/luarocks"
     package.path = package.path
@@ -55,6 +95,18 @@ do
       .. ";" .. luarocks_root .. "/share/lua/" .. lua_ver .. "/?/init.lua"
     package.cpath = package.cpath
       .. ";" .. luarocks_root .. "/lib/lua/" .. lua_ver .. "/?.dll"
+  end
+  local unix = package.config and package.config:sub(1, 1) == "/"
+  if unix then
+    local home = os.getenv("HOME") or ""
+    if home ~= "" then
+      local luarocks_root = home .. "/.luarocks"
+      package.path = package.path
+        .. ";" .. luarocks_root .. "/share/lua/" .. lua_ver .. "/?.lua"
+        .. ";" .. luarocks_root .. "/share/lua/" .. lua_ver .. "/?/init.lua"
+      package.cpath = package.cpath
+        .. ";" .. luarocks_root .. "/lib/lua/" .. lua_ver .. "/?.so"
+    end
   end
 end
 

@@ -1,0 +1,82 @@
+# Build lsqlite3complete (Lua 5.4 via LuaRocks) for macOS and commit into bin/darwin64 + bin/darwin-arm64.
+# Run: Actions → "Bundle lsqlite3complete (macOS)" → Run workflow.
+# Requires: default GITHUB_TOKEN with contents: write (enabled for Actions in repo Settings).
+
+name: Bundle lsqlite3complete (macOS)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            dest: darwin-arm64
+          - runner: macos-15-intel
+            dest: darwin64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.4.7"
+      - uses: leafo/gh-actions-luarocks@v5
+      - name: Install lsqlite3complete
+        run: luarocks install lsqlite3complete
+      - name: Copy artifact
+        run: |
+          SO="$HOME/.luarocks/lib/lua/5.4/lsqlite3complete.so"
+          test -f "$SO"
+          cp "$SO" "${{ github.workspace }}/lsqlite3complete-${{ matrix.dest }}.so"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lsqlite-${{ matrix.dest }}
+          path: lsqlite3complete-${{ matrix.dest }}.so
+
+  commit:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: _artifacts
+      - name: Install binaries and patch @provides
+        run: |
+          set -e
+          mkdir -p SampleLodeManager/bin/darwin64 SampleLodeManager/bin/darwin-arm64
+          cp "_artifacts/lsqlite-darwin64/lsqlite3complete-darwin64.so" SampleLodeManager/bin/darwin64/lsqlite3complete.so
+          cp "_artifacts/lsqlite-darwin-arm64/lsqlite3complete-darwin-arm64.so" SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so
+          python3 << 'PY'
+          from pathlib import Path
+          p = Path("SampleLodeManager/SampleLodeManager.lua")
+          t = p.read_text(encoding="utf-8")
+          if "bin/darwin64/lsqlite3complete.so" in t:
+              print("@provides already contains darwin64; skipping header patch")
+          else:
+              needle = "-- @provides [win64 nomain] bin/win64/lsqlite3complete.dll\n"
+              ins = (
+                  needle
+                  + "-- @provides [darwin64 nomain] bin/darwin64/lsqlite3complete.so\n"
+                  + "-- @provides [darwin-arm64 nomain] bin/darwin-arm64/lsqlite3complete.so\n"
+              )
+              if needle not in t:
+                  raise SystemExit("expected win64 @provides line not found; edit SampleLodeManager.lua")
+              p.write_text(t.replace(needle, ins, 1), encoding="utf-8")
+              print("patched @provides for darwin64 + darwin-arm64")
+          PY
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add SampleLodeManager/bin/darwin64/lsqlite3complete.so SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so SampleLodeManager/SampleLodeManager.lua
+          git diff --staged --quiet && echo "No changes" && exit 0
+          git commit -m "ci: bundle lsqlite3complete for macOS (darwin64, darwin-arm64)"
+          git push
