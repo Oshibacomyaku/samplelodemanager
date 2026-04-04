@@ -1,16 +1,12 @@
 -- @description Sample Lode Manager
 -- @version 0.2.0
 -- @author motit
--- @changelog
---   Prepare ReaPack distribution metadata.
--- @about
---   Sample browser and manager for REAPER.
---   Requires ReaImGui. Optional Python workers are bundled.
--- @provides
---   [main] SampleLodeManager.lua
---   [nomain] src/**/*.lua
---   [nomain] src/python/**/*.py
---   [nomain] licenses/*.txt
+-- @changelog Prepare ReaPack distribution metadata.
+-- @about Sample browser and manager for REAPER. Requires ReaImGui. Optional Python workers are bundled.
+-- @provides [main] SampleLodeManager.lua
+-- @provides [nomain] src/**/*.lua
+-- @provides [nomain] src/python/**/*.py
+-- @provides [nomain] licenses/*.txt
 -- Sample Lode Manager
 
 local r = reaper
