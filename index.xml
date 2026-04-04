@@ -7,7 +7,7 @@
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 Sample browser and manager for REAPER. Requires ReaImGui. Optional Python workers are bundled.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Optional bundled SQLite: see bin/README.md.\par}
 }
 ]]></description>
       </metadata>
