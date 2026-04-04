@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1">
+<index version="1" name="Sample Lode Manager">
   <category name="SampleLodeManager">
     <reapack name="SampleLodeManager.lua" type="script" desc="Sample Lode Manager">
       <metadata>
