@@ -8,6 +8,8 @@
 -- @provides [nomain] src/python/**/*.py
 -- @provides [nomain] licenses/*.txt
 -- @provides [win64 nomain] bin/win64/lsqlite3complete.dll
+-- @provides [darwin64 nomain] bin/darwin64/lsqlite3complete.so
+-- @provides [darwin-arm64 nomain] bin/darwin-arm64/lsqlite3complete.so
 -- Sample Lode Manager
 
 local r = reaper
