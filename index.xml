@@ -1,5 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1">
+  <category name="SampleLodeManager">
+    <reapack name="SampleLodeManager.lua" type="script" desc="Sample Lode Manager">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Sample browser and manager for REAPER. Requires ReaImGui. Optional Python workers are bundled.\par}
+}
+]]></description>
+      </metadata>
+      <version name="0.2.0" author="motit" time="2026-04-04T07:18:01Z">
+        <changelog><![CDATA[Prepare ReaPack distribution metadata.]]></changelog>
+        <source main="main">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/SampleLodeManager.lua</source>
+        <source file="src/lib/core/app.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/core/app.lua</source>
+        <source file="src/lib/core/scan_controller.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/core/scan_controller.lua</source>
+        <source file="src/lib/core/ui_pack.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/core/ui_pack.lua</source>
+        <source file="src/lib/core/ui_pack_manage_sources.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/core/ui_pack_manage_sources.lua</source>
+        <source file="src/lib/core/ui_samples_galaxy.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/core/ui_samples_galaxy.lua</source>
+        <source file="src/lib/core/ui_samples_list.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/core/ui_samples_list.lua</source>
+        <source file="src/lib/core/ui_search.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/core/ui_search.lua</source>
+        <source file="src/lib/core/ui_theme.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/core/ui_theme.lua</source>
+        <source file="src/lib/cover_art.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/cover_art.lua</source>
+        <source file="src/lib/db/db_manager.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/db/db_manager.lua</source>
+        <source file="src/lib/db/sqlite_store.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/db/sqlite_store.lua</source>
+        <source file="src/lib/waveform.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/lib/waveform.lua</source>
+        <source file="src/python/auto_alias_suggest.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/python/auto_alias_suggest.py</source>
+        <source file="src/python/phase_a_filename_nlp.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/python/phase_a_filename_nlp.py</source>
+        <source file="src/python/phase_b2_audio_hints.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/python/phase_b2_audio_hints.py</source>
+        <source file="src/python/phase_c_rerank.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/python/phase_c_rerank.py</source>
+        <source file="src/python/phase_d_audio_features.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/python/phase_d_audio_features.py</source>
+        <source file="src/python/phase_e_embed_umap.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/src/python/phase_e_embed_umap.py</source>
+        <source file="licenses/lsqlite3complete_LICENSE.txt">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt</source>
+        <source file="licenses/sqlite_PUBLIC_DOMAIN.txt">https://github.com/Oshibacomyaku/samplelodemanager/raw/b644e9e78c33cf9cab9223bd33d949a9b8aced35/SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt</source>
+      </version>
+    </reapack>
+  </category>
   <metadata>
     <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
@@ -12,23 +49,23 @@
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaImGui\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab SWS Extension\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab js_ReaScriptAPI\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 These dependencies are not bundled in this repository. Install them via ReaPack before running {\f1 SampleLodeManager.lua}.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 These dependencies are not bundled in this repository. Install them via ReaPack before running {\f1 SampleLodeManager/SampleLodeManager.lua}.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Entry Script\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager.lua}\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/SampleLodeManager.lua}\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 ReaPack Distribution\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 This repository is intended to be published through ReaPack.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 The distribution package includes:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager.lua}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 src/**/*.lua}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 src/python/**/*.py}\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 licenses/*.txt}\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/SampleLodeManager.lua}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/src/**/*.lua}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/src/python/**/*.py}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/*.txt}\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Third-Party License Notes\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Bundled third-party notices are in:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 licenses/lsqlite3complete_LICENSE.txt} (MIT)\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 licenses/sqlite_PUBLIC_DOMAIN.txt} (SQLite public domain statement)\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt} (MIT)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt} (SQLite public domain statement)\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Repository Policy\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Local design/dev notes under {\f1 docs/} are excluded from Git by default via {\f1 .gitignore}.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Keep runtime/distribution files in repository root, {\f1 src/}, and {\f1 licenses/}.\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Keep runtime/distribution files under {\f1 SampleLodeManager/}.\sa180\par}
 }
 ]]></description>
   </metadata>
