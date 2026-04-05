@@ -28,12 +28,13 @@ jobs:
       # --amend: 同じ @version のまま @changelog やスクリプトを直したときも index の取得元コミットを更新する
       - name: Update index.xml
         run: reapack-index --commit --rebuild --amend -o index.xml .
+      # ルート <metadata> の RTF に README の `src/**/*.lua` 等が入り、全文 grep が誤カウントするので <source 行だけ数える
       - name: Refuse incomplete index (do not push)
         run: |
-          n_attr=$(grep -cE 'file="src/' index.xml || true)
-          n_url=$(grep -cE 'SampleLodeManager/src/.+\.(lua|py)' index.xml || true)
-          if [ "$n_attr" -lt 10 ] && [ "$n_url" -lt 10 ]; then
-            echo "reapack-index produced too few src/ sources (file=\"src/: $n_attr, url paths: $n_url); aborting push."
+          n_file=$(grep '<source' index.xml | grep -cE 'file="src/' || true)
+          n_url=$(grep '<source' index.xml | grep -cE '/SampleLodeManager/src/.+\.(lua|py)' || true)
+          if [ "$n_file" -lt 10 ] && [ "$n_url" -lt 10 ]; then
+            echo "reapack-index produced too few src/ <source> rows (file=\"src/: $n_file, url path: $n_url); aborting push."
             exit 1
           fi
       - name: Push changes
