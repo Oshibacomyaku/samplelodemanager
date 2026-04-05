@@ -55,3 +55,4 @@ This section is **not legal advice**; when in doubt, confirm with your own couns
 
 - Local design/dev notes under repository-root `docs/` are excluded from Git by default via `.gitignore` (`/docs/` only).
 - Keep runtime/distribution files under `SampleLodeManager/`.
+- Short Japanese notes on Git **commit / pull / push**: `SampleLodeManager/docs/git_basics_ja.md`.
