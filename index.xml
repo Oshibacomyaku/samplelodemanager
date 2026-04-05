@@ -52,7 +52,7 @@
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaImGui\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab SWS Extension\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab js_ReaScriptAPI\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 These dependencies are not bundled in this repository. Install them via ReaPack before running {\f1 SampleLodeManager/motit_Sample Lode Manager.lua}.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 These dependencies are not bundled in this repository. Install them via ReaPack before running {\f1 SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua}.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Bundled with the ReaPack package (this repo)\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 The ReaPack distribution also ships {\b SQLite native bindings} ({\f1 lsqlite3complete}) for:\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Windows x64} \u8212- {\f1 SampleLodeManager/bin/win64/lsqlite3complete.dll}\par}
@@ -61,11 +61,11 @@
 {\pard \ql \f0 \sa180 \li0 \fi0 Other REAPER builds (for example {\b Win32} or {\b Linux}) do not currently ship a bundled binary here; you still need a compatible {\f1 lsqlite3} / {\f1 lsqlite3complete} / {\f1 sqlite3} module loadable from Lua if you use those platforms.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 The entry script prepends {\f1 SampleLodeManager/bin/<platform>/} to Lua\u8217's {\f1 package.cpath} and then {\f1 require}s the native module. It does {\b not} load \u8220"LuaRocks into REAPER\u8221" as a whole \u8212- it only adds optional user paths so a manually built DLL/SO can be found if you installed one yourself.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Entry Script\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/motit_Sample Lode Manager.lua} (ReaTeam-style name: {\f1 author_Action name here.lua}; appears in Actions as {\b Script: motit_Sample Lode Manager.lua})\sa180\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua} (ReaTeam-style name: {\f1 author_Action name here.lua}; {\f1 @author} is used by ReaPack metadata; appears in Actions as {\b Script: oshibacomyaku_Sample Lode Manager.lua})\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 ReaPack Distribution\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 This repository is intended to be published through ReaPack.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 The distribution package includes:\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/motit_Sample Lode Manager.lua}\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua}\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/src/**/*.lua}\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/src/python/**/*.py}\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/licenses/*.txt}\par}
