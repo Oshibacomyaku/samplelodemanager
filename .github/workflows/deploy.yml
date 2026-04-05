@@ -30,9 +30,10 @@ jobs:
         run: reapack-index --commit --rebuild --amend -o index.xml .
       - name: Refuse incomplete index (do not push)
         run: |
-          n=$(grep -cE 'file="src/' index.xml || true)
-          if [ "$n" -lt 10 ]; then
-            echo "reapack-index produced too few src/ sources ($n); aborting push."
+          n_attr=$(grep -cE 'file="src/' index.xml || true)
+          n_url=$(grep -cE 'SampleLodeManager/src/.+\.(lua|py)' index.xml || true)
+          if [ "$n_attr" -lt 10 ] && [ "$n_url" -lt 10 ]; then
+            echo "reapack-index produced too few src/ sources (file=\"src/: $n_attr, url paths: $n_url); aborting push."
             exit 1
           fi
       - name: Push changes

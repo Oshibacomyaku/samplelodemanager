@@ -45,6 +45,8 @@ Intel / Apple Silicon 用 `.so` は GitHub 上で次を実行してください�
 
 Library scripts under `src/**/*.lua` (not the entry ReaScript) must start with `-- @noindex` so `reapack-index --check` does not treat each file as its own package (which would require `@version` on every file).
 
+The entry script should list each bundled file with `-- @provides [nomain] path/to/file` (explicit paths). Relying only on globs like `src/**/*.lua` can make `reapack-index --rebuild` omit `<source file="src/...">` rows in CI, which breaks the `deploy` workflow guard.
+
 Add multiline `@provides` on the main script (each line must reference a **real** file or `reapack-index --check` fails):
 
 ```lua

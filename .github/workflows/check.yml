@@ -19,8 +19,9 @@ jobs:
       # Multi-file パッケージは index に <source file="src/..."> が無いと、ReaPack がエントリだけ更新して app.lua が古いまま残る
       - name: Verify index lists src/* sources
         run: |
-          n=$(grep -cE 'file="src/' index.xml || true)
-          if [ "$n" -lt 10 ]; then
-            echo "index.xml must list src/*.lua and src/python/* (found $n lines with file=\"src/)."
+          n_attr=$(grep -cE 'file="src/' index.xml || true)
+          n_url=$(grep -cE 'SampleLodeManager/src/.+\.(lua|py)' index.xml || true)
+          if [ "$n_attr" -lt 10 ] && [ "$n_url" -lt 10 ]; then
+            echo "index.xml must list src/*.lua and src/python/* (file=\"src/: $n_attr, url paths: $n_url)."
             exit 1
           fi

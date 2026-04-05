@@ -1,12 +1,29 @@
 -- @description Sample Lode Manager
--- @version 0.2.6
+-- @version 0.2.7
 -- @author oshibacomyaku
--- @changelog 0.2.6: src 配下の .lua に @noindex を付与（reapack-index --check が各ファイルをパッケージ扱いするため）。0.2.5: メイン ImGui Begin/End の常時ペア化とドック ID の正しい永続化。0.2.4: index の全ファイル列挙・リサイズ関連。
+-- @changelog 0.2.7: @provides の glob をやめ各ファイルを明示（reapack-index --rebuild 時に src の source 行が消え CI が落ちるのを防ぐ）。0.2.6: src .lua に @noindex。0.2.5: ImGui Begin/End・ドック ID 永続化。0.2.4: index 全ファイル列挙。
 -- @about Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Bundled SQLite bindings (lsqlite3complete): MIT — see licenses/lsqlite3complete_LICENSE.txt. SQLite engine: public domain — see licenses/sqlite_PUBLIC_DOMAIN.txt. Layout: bin/README.md.
 -- @provides [main] oshibacomyaku_Sample Lode Manager.lua
--- @provides [nomain] src/**/*.lua
--- @provides [nomain] src/python/**/*.py
--- @provides [nomain] licenses/*.txt
+-- @provides [nomain] src/lib/cover_art.lua
+-- @provides [nomain] src/lib/core/app.lua
+-- @provides [nomain] src/lib/core/scan_controller.lua
+-- @provides [nomain] src/lib/core/ui_pack.lua
+-- @provides [nomain] src/lib/core/ui_pack_manage_sources.lua
+-- @provides [nomain] src/lib/core/ui_samples_galaxy.lua
+-- @provides [nomain] src/lib/core/ui_samples_list.lua
+-- @provides [nomain] src/lib/core/ui_search.lua
+-- @provides [nomain] src/lib/core/ui_theme.lua
+-- @provides [nomain] src/lib/db/db_manager.lua
+-- @provides [nomain] src/lib/db/sqlite_store.lua
+-- @provides [nomain] src/lib/waveform.lua
+-- @provides [nomain] src/python/auto_alias_suggest.py
+-- @provides [nomain] src/python/phase_a_filename_nlp.py
+-- @provides [nomain] src/python/phase_b2_audio_hints.py
+-- @provides [nomain] src/python/phase_c_rerank.py
+-- @provides [nomain] src/python/phase_d_audio_features.py
+-- @provides [nomain] src/python/phase_e_embed_umap.py
+-- @provides [nomain] licenses/lsqlite3complete_LICENSE.txt
+-- @provides [nomain] licenses/sqlite_PUBLIC_DOMAIN.txt
 -- @provides [win64 nomain] bin/win64/lsqlite3complete.dll
 -- @provides [darwin64 nomain] bin/darwin64/lsqlite3complete.so
 -- @provides [darwin-arm64 nomain] bin/darwin-arm64/lsqlite3complete.so
