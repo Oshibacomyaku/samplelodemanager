@@ -20,7 +20,7 @@ Place **one** native module per folder (built against **REAPER’s embedded Lua 
 | `linux-x86_64/` | contains `linux` and `x86_64` / `i686` handling | `lsqlite3complete.so` | `linux64` |
 | `linux-aarch64/` | contains `linux` and `aarch64` | `lsqlite3complete.so` | `linux-aarch64` |
 
-`SampleLodeManager.lua` prepends the matching `bin/<platform>/` path to `package.cpath` before generic `bin/?.dll` / `bin/?.so`.
+The main script (`motit_Sample Lode Manager.lua`) prepends the matching `bin/<platform>/` path to `package.cpath` before generic `bin/?.dll` / `bin/?.so`.
 
 ## macOS バイナリをリポジトリに足す（GitHub Actions）
 
@@ -28,7 +28,7 @@ Windows 用 DLL は開発マシンで `luarocks install lsqlite3complete` して
 Intel / Apple Silicon 用 `.so` は GitHub 上で次を実行してください。
 
 1. リポジトリ **Actions** → **Bundle lsqlite3complete (macOS)** → **Run workflow**
-2. 成功すると `bin/darwin64/` と `bin/darwin-arm64/` に `lsqlite3complete.so` がコミットされ、`SampleLodeManager.lua` の `@provides` に darwin 行が追記されます。
+2. 成功すると `bin/darwin64/` と `bin/darwin-arm64/` に `lsqlite3complete.so` がコミットされ、`motit_Sample Lode Manager.lua` の `@provides` に darwin 行が追記されます。
 
 `macos-15-intel` ランナーが使えない場合はワークフローの `matrix.runner` を調整するか、該当アーキ向けに手元でビルドして同じパスに配置してください。
 

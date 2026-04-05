@@ -5048,16 +5048,12 @@ local function loop()
     r.SetExtState(XS.section, XS.heartbeat, tostring(now), false)
   end
 
-  -- Window flags: no collapse keeps it stable for dock usage
+  -- Window flags: no collapse keeps it stable for dock usage; resizing enabled (horizontal + vertical).
   local flags = r.ImGui_WindowFlags_NoCollapse()
-  if r.ImGui_WindowFlags_NoResize then
-    flags = flags | r.ImGui_WindowFlags_NoResize()
-  end
-  -- Dock枠の内側にスクロールバー用の余白が出ると「幅が二重」っぽく見えるため無効化
+  -- Top-level scrollbar off: avoids double-gutter look inside dock; inner children scroll as needed.
   flags = flags
     | window_flag_noscrollbar()
     | window_flag_noscroll_with_mouse()
-    | window_flag_noresize()
   local style_push_n = 0
   local color_push_n = 0
   local function push_style_var_1(var_fn, value, value_y)
