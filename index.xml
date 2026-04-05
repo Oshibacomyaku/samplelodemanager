@@ -11,8 +11,13 @@
 }
 ]]></description>
       </metadata>
-      <version name="0.2.3" author="oshibacomyaku" time="2026-04-05T20:00:00Z">
-        <changelog><![CDATA[0.2.3: ReaPack index points at current files; main window seeds size once so the resize grip works when undocked.]]></changelog>
+      <version name="0.2.2" author="oshibacomyaku" time="2026-04-05T16:44:40Z">
+        <changelog><![CDATA[Author / entry file: oshibacomyaku_Sample Lode Manager.lua (ReaPack shows this author). Floating window: default first size + optional size constraints so undocked width can be changed more reliably.]]></changelog>
+        <source main="main">https://github.com/Oshibacomyaku/samplelodemanager/raw/37b800b8d227b7bc4b3beb71a2c44a83d75b1d70/SampleLodeManager/oshibacomyaku_Sample%20Lode%20Manager.lua</source>
+        <source platform="darwin-arm64" file="bin/darwin-arm64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/37b800b8d227b7bc4b3beb71a2c44a83d75b1d70/SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so</source>
+      </version>
+      <version name="0.2.3" author="oshibacomyaku" time="2026-04-05T17:40:35Z">
+        <changelog><![CDATA[0.2.3: ReaPack 配布が古いコミットを指さないよう index を更新。メインウィンドウは初回のみ SetNextWindowSize（毎フレーム固定をやめ undocked 時のリサイズグリップ復活）。]]></changelog>
         <source main="main">https://github.com/Oshibacomyaku/samplelodemanager/raw/3d63749cc3e2bb10c50b6ca9899d4c678bb89c5f/SampleLodeManager/oshibacomyaku_Sample%20Lode%20Manager.lua</source>
         <source platform="darwin-arm64" file="bin/darwin-arm64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/3d63749cc3e2bb10c50b6ca9899d4c678bb89c5f/SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so</source>
       </version>
