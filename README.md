@@ -32,17 +32,6 @@ The entry script prepends `SampleLodeManager/bin/<platform>/` to Lua’s `packag
 
 This repository is intended to be published through ReaPack.
 
-### Import URL (important)
-
-ReaPack’s **Import repositories…** field must point at the **raw `index.xml`**, not the GitHub repository home page.
-
-- **Wrong:** `https://github.com/Oshibacomyaku/samplelodemanager` — the server returns **HTML** (the website). The parser then fails with errors mentioning **`<link>`** or invalid XML.
-- **Right:** paste this **exactly**:
-
-`https://raw.githubusercontent.com/Oshibacomyaku/samplelodemanager/main/index.xml`
-
-Then use **Synchronize packages** / install **Sample Lode Manager** as usual.
-
 The distribution package includes:
 
 - `SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua`
