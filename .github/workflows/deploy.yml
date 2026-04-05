@@ -25,7 +25,8 @@ jobs:
       - name: Install reapack-index
         run: gem install reapack-index
       # --rebuild: 既存 index とメイン名のズレ（旧ファイル名のまま等）を残さず、リポジトリから index を作り直す
+      # --amend: 同じ @version のまま @changelog やスクリプトを直したときも index の取得元コミットを更新する
       - name: Update index.xml
-        run: reapack-index --commit --rebuild -o index.xml .
+        run: reapack-index --commit --rebuild --amend -o index.xml .
       - name: Push changes
         run: git push
