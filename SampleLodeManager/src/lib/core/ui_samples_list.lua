@@ -1,3 +1,4 @@
+-- @noindex
 local M = {}
 
 local r = nil

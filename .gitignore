@@ -1,6 +1,9 @@
 # Keep local documentation out of GitHub by default (repository root only).
 /docs/
 
+# Local clone for reading reapack-index source (not part of the project).
+.tmp-reapack-index/
+
 # Runtime/generated cache
 cover_cache/
 **/cover_cache/

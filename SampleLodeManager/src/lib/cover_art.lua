@@ -1,3 +1,4 @@
+-- @noindex
 -- Splice pack cover URLs: download to local cache + optional ReaImGui texture.
 local r = reaper
 

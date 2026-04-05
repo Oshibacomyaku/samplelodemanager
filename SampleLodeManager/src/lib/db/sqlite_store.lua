@@ -1,3 +1,4 @@
+-- @noindex
 local r = reaper
 
 local M = {}

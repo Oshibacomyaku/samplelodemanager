@@ -1,3 +1,4 @@
+-- @noindex
 local M = {}
 
 local manage_sources_ui = nil

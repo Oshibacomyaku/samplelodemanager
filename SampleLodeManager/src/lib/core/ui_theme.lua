@@ -1,3 +1,4 @@
+-- @noindex
 local M = {}
 
 function M.default_constants()
