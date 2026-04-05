@@ -43,6 +43,8 @@ Intel / Apple Silicon 用 `.so` は GitHub 上で次を実行してください�
 
 ## ReaPack (`reapack-index`): when binaries are committed
 
+Library scripts under `src/**/*.lua` (not the entry ReaScript) must start with `-- @noindex` so `reapack-index --check` does not treat each file as its own package (which would require `@version` on every file).
+
 Add multiline `@provides` on the main script (each line must reference a **real** file or `reapack-index --check` fails):
 
 ```lua
