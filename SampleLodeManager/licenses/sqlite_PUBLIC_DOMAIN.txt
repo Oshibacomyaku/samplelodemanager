@@ -1,3 +1,5 @@
+-- @noindex
+
 SQLite Public Domain Statement
 
 SQLite is in the public domain.

@@ -1,7 +1,7 @@
+-- @noindex
 -- Low-resolution waveform from PCM_Source_GetPeaks (REAPER).
 -- Buffer layout (mono, want_extra_type=0): indices 1..N = max block, N+1..2N = min block.
 
--- @noindex
 local r = reaper
 
 local M = {}

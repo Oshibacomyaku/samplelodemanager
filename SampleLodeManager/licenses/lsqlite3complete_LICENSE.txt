@@ -1,3 +1,5 @@
+-- @noindex
+
 lsqlite3complete (LuaRocks) License: MIT
 
 Reference:

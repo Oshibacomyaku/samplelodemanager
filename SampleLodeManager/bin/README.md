@@ -43,7 +43,7 @@ Intel / Apple Silicon 用 `.so` は GitHub 上で次を実行してください�
 
 ## ReaPack (`reapack-index`): when binaries are committed
 
-Library scripts under `src/**/*.lua` (not the entry ReaScript) must start with `-- @noindex` so `reapack-index --check` does not treat each file as its own package (which would require `@version` on every file).
+Library scripts under `src/**/*.lua` (not the entry ReaScript) must start with `-- @noindex` so `reapack-index --check` does not treat each file as its own package (which would require `@version` on every file). The same applies to `src/python/*.py` (use `# @noindex` right after the shebang) and to `licenses/*.txt` (a leading `-- @noindex` line is enough for the indexer).
 
 The entry script should list each bundled file with `-- @provides [nomain] path/to/file` (explicit paths). Relying only on globs like `src/**/*.lua` can make `reapack-index --rebuild` omit `<source file="src/...">` rows in CI, which breaks the `deploy` workflow guard.
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @noindex
 import argparse
 import difflib
 from pathlib import Path

@@ -14,19 +14,19 @@ Install them via ReaPack before running `SampleLodeManager/oshibacomyaku_Sample 
 
 ## Bundled with the ReaPack package (this repo)
 
-The ReaPack distribution also ships **SQLite native bindings** (`lsqlite3complete`) for:
+The ReaPack distribution also ships SQLite native bindings (`lsqlite3complete`) for:
 
-- **Windows x64** — `SampleLodeManager/bin/win64/lsqlite3complete.dll`
-- **macOS Intel** — `SampleLodeManager/bin/darwin64/lsqlite3complete.so`
-- **macOS Apple Silicon** — `SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so`
+- Windows x64 — `SampleLodeManager/bin/win64/lsqlite3complete.dll`
+- macOS Intel — `SampleLodeManager/bin/darwin64/lsqlite3complete.so`
+- macOS Apple Silicon — `SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so`
 
-Other REAPER builds (for example **Win32** or **Linux**) do not currently ship a bundled binary here; you still need a compatible `lsqlite3` / `lsqlite3complete` / `sqlite3` module loadable from Lua if you use those platforms.
+Other REAPER builds (for example Win32 or Linux) do not currently ship a bundled binary here; you still need a compatible `lsqlite3` / `lsqlite3complete` / `sqlite3` module loadable from Lua if you use those platforms.
 
-The entry script prepends `SampleLodeManager/bin/<platform>/` to Lua’s `package.cpath` and then `require`s the native module. It does **not** load “LuaRocks into REAPER” as a whole — it only adds optional user paths so a manually built DLL/SO can be found if you installed one yourself.
+The entry script prepends `SampleLodeManager/bin/<platform>/` to Lua’s `package.cpath` and then `require`s the native module. It does not load “LuaRocks into REAPER” as a whole — it only adds optional user paths so a manually built DLL/SO can be found if you installed one yourself.
 
 ## Entry Script
 
-- `SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua` (ReaTeam-style name: `author_Action name here.lua`; `@author` is used by ReaPack metadata; appears in Actions as **Script: oshibacomyaku_Sample Lode Manager.lua**)
+- `SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua` (ReaTeam-style name: `author_Action name here.lua`; `@author` is used by ReaPack metadata; appears in Actions as Script: oshibacomyaku_Sample Lode Manager.lua)
 
 ## ReaPack Distribution
 
@@ -42,17 +42,17 @@ The distribution package includes:
 
 ## Third-Party License Notes
 
-The **prebuilt `lsqlite3complete` binaries** in `SampleLodeManager/bin/` are Lua bindings that typically **link against or embed SQLite**. In this repository we ship **full license texts** next to the script (ReaPack installs them with the package):
+The prebuilt `lsqlite3complete` binaries in `SampleLodeManager/bin/` are Lua bindings that typically link against or embed SQLite. In this repository we ship full license texts next to the script (ReaPack installs them with the package):
 
-- **`SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt`** — **MIT** (applies to the **lsqlite3complete** binding code as packaged on LuaRocks; redistribution generally requires keeping that notice with the software).
-- **`SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt`** — short statement aligned with **SQLite’s public-domain dedication** (see also [sqlite.org/copyright](https://www.sqlite.org/copyright.html)).
+- `SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt` — MIT (applies to the lsqlite3complete binding code as packaged on LuaRocks; redistribution generally requires keeping that notice with the software).
+- `SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt` — short statement aligned with SQLite’s public-domain dedication (see also [sqlite.org/copyright](https://www.sqlite.org/copyright.html)).
 
-If you **rebuild** the native module from other sources, replace or amend these files so they match **your** actual upstream, and keep distributing the corresponding notices with the binaries.
+If you rebuild the native module from other sources, replace or amend these files so they match your actual upstream, and keep distributing the corresponding notices with the binaries.
 
-This section is **not legal advice**; when in doubt, confirm with your own counsel or upstream terms.
+This section is not legal advice; when in doubt, confirm with your own counsel or upstream terms.
 
 ## Repository Policy
 
 - Local design/dev notes under repository-root `docs/` are excluded from Git by default via `.gitignore` (`/docs/` only).
 - Keep runtime/distribution files under `SampleLodeManager/`.
-- Short Japanese notes on Git **commit / pull / push**: `SampleLodeManager/docs/git_basics_ja.md`.
+- Short Japanese notes on Git commit / pull / push: `SampleLodeManager/docs/git_basics_ja.md`.
