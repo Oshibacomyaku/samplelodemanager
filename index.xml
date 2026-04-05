@@ -64,12 +64,6 @@
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua} (ReaTeam-style name: {\f1 author_Action name here.lua}; {\f1 @author} is used by ReaPack metadata; appears in Actions as {\b Script: oshibacomyaku_Sample Lode Manager.lua})\sa180\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 ReaPack Distribution\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 This repository is intended to be published through ReaPack.\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel2 \b \fs28 Import URL (important)\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 ReaPack\u8217's {\b Import repositories\u8230 ?} field must point at the {\b raw {\f1 index.xml}}, not the GitHub repository home page.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Wrong:} {\f1 https://github.com/Oshibacomyaku/samplelodemanager} \u8212- the server returns {\b HTML} (the website). The parser then fails with errors mentioning {\b {\f1 <link>}} or invalid XML.\par}
-{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\b Right:} paste this {\b exactly}:\sa180\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 {\f1 https://raw.githubusercontent.com/Oshibacomyaku/samplelodemanager/main/index.xml}\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Then use {\b Synchronize packages} / install {\b Sample Lode Manager} as usual.\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 The distribution package includes:\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua}\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab {\f1 SampleLodeManager/src/**/*.lua}\par}
