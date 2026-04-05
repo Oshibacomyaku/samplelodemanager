@@ -899,6 +899,7 @@ local function init_state()
       dock_restore_pending = false,
       persisted_dock_id = nil,
       dock_restore_attempts = 0,
+      main_window_size_seeded = false,
       perf_enabled = false,
       perf_last_report_at = nil,
       perf_last_report = "",
@@ -5034,6 +5035,7 @@ local function loop()
   if state and state.runtime and state.runtime.ctx_recreate_requested then
     ctx = nil
     state.runtime.ctx_recreate_requested = false
+    state.runtime.main_window_size_seeded = false
   end
   if not ensure_reaimgui_ctx() then return end
   if r.GetExtState then
@@ -5153,19 +5155,20 @@ local function loop()
       state.runtime.dock_restore_pending = false
     end
   end
-  -- Undocked (floating) script window: avoid a permanently narrow host size. FirstUseEver seeds width/height once;
-  -- SetNextWindowSizeConstraints (when exposed by ReaImGui) relaxes min/max so horizontal resize is possible.
+  -- Undocked (floating) script window: seed default size once only. Calling SetNextWindowSize every frame with
+  -- cond 0 (Always) locks size and hides the resize grip; if Cond_FirstUseEver is missing/fails, use ImGui enum 4.
   do
     local def_w, def_h = 920, 720
     local min_w, min_h = 340, 220
     local max_w, max_h = 100000, 100000
-    if r.ImGui_SetNextWindowSize then
-      local cond_fue = 0
-      if r.ImGui_Cond_FirstUseEver then
+    if not state.runtime.main_window_size_seeded and r.ImGui_SetNextWindowSize then
+      local cond_fue = 4 -- ImGuiCond_FirstUseEver
+      if type(r.ImGui_Cond_FirstUseEver) == "function" then
         local ok_c, c = pcall(function() return r.ImGui_Cond_FirstUseEver() end)
-        if ok_c and c then cond_fue = c end
+        if ok_c and type(c) == "number" then cond_fue = c end
       end
-      pcall(function() r.ImGui_SetNextWindowSize(ctx, def_w, def_h, cond_fue) end)
+      local ok_sz = pcall(function() r.ImGui_SetNextWindowSize(ctx, def_w, def_h, cond_fue) end)
+      if ok_sz then state.runtime.main_window_size_seeded = true end
     end
     if r.ImGui_SetNextWindowSizeConstraints then
       pcall(function()
