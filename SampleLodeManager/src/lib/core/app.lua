@@ -899,6 +899,7 @@ local function init_state()
       dock_restore_pending = false,
       persisted_dock_id = nil,
       dock_restore_attempts = 0,
+      main_window_dock_id_for_persist = nil,
       main_window_size_seeded = false,
       perf_enabled = false,
       perf_last_report_at = nil,
@@ -4433,16 +4434,15 @@ local function persist_ui_state(now_ts)
     true
   )
 
-  if r.ImGui_GetWindowDockID then
-    local ok_dock, dock_id = pcall(function()
-      return r.ImGui_GetWindowDockID(ctx)
-    end)
-    local dock_num = ok_dock and tonumber(dock_id) or nil
-    set_extstate_text(
-      XS.ui_dock_id,
-      (dock_num and dock_num > 0) and tostring(math.floor(dock_num)) or "0",
-      true
-    )
+  do
+    local dock_num = state.runtime and tonumber(state.runtime.main_window_dock_id_for_persist)
+    if dock_num ~= nil then
+      set_extstate_text(
+        XS.ui_dock_id,
+        (dock_num > 0) and tostring(math.floor(dock_num)) or "0",
+        true
+      )
+    end
   end
 end
 
@@ -5209,20 +5209,9 @@ local function loop()
       r.ImGui_Separator(ctx)
       r.ImGui_TextWrapped(ctx, "If blue resize line still appears now, cause is top-level host/docking behavior, not child/table layout.")
       if r.ImGui_Button(ctx, "Dummy Button", -1, 28) then end
-      r.ImGui_End(ctx)
-      if color_push_n > 0 then
-        pcall(function() r.ImGui_PopStyleColor(ctx, color_push_n) end)
-      end
-      if style_push_n > 0 then
-        pcall(function() r.ImGui_PopStyleVar(ctx, style_push_n) end)
-      end
-      if open and not r.ImGui_IsKeyPressed(ctx, r.ImGui_Key_Escape()) then
-        r.defer(loop)
-      end
-      return
     end
 
-    if not state.runtime.panel_split_inited then
+    if not C.DEBUG_MINIMAL_LAYOUT and not state.runtime.panel_split_inited then
       state.runtime.panel_split_inited = true
       local lpf = tonumber(state.ui.layout_pack_frac) or 0.20
       local lsf = tonumber(state.ui.layout_search_frac) or 0.24
@@ -5235,6 +5224,7 @@ local function loop()
     pack_h = math.min(pack_h, math.floor(win_h * 0.62))
     search_h = math.min(search_h, math.floor(win_h * 0.62), C.SEARCH_PANEL_MAX_H_PX)
 
+    if not C.DEBUG_MINIMAL_LAYOUT then
     state.ui.follow_arrange_selection = false
 
     draw_panel_heading_row("pack_panel_collapsed", "Packs")
@@ -5386,13 +5376,29 @@ local function loop()
       r.ImGui_Text(ctx, state.runtime.perf_last_report)
     end
 
-    r.ImGui_End(ctx)
+    end -- not DEBUG_MINIMAL_LAYOUT (full layout)
+    if state and state.runtime and r.ImGui_GetWindowDockID then
+      local ok_snap, sid = pcall(function()
+        return r.ImGui_GetWindowDockID(ctx)
+      end)
+      if ok_snap then
+        state.runtime.main_window_dock_id_for_persist = tonumber(sid) or 0
+      end
+    end
   end
+  r.ImGui_End(ctx)
   if style_push_n > 0 then
     pcall(function() r.ImGui_PopStyleVar(ctx, style_push_n) end)
   end
   if color_push_n > 0 then
     pcall(function() r.ImGui_PopStyleColor(ctx, color_push_n) end)
+  end
+
+  if visible and C.DEBUG_MINIMAL_LAYOUT then
+    if open and not r.ImGui_IsKeyPressed(ctx, r.ImGui_Key_Escape()) then
+      r.defer(loop)
+    end
+    return
   end
 
   draw_scan_progress_window()

@@ -1,7 +1,7 @@
 -- @description Sample Lode Manager
--- @version 0.2.4
+-- @version 0.2.5
 -- @author oshibacomyaku
--- @changelog 0.2.4: ReaPack の index に @provides の全ファイルを列挙（0.2.3 はエントリだけ更新され src の app.lua 等が古いまま残ることがあった）。リサイズグリップ修正は src 側のため必須。
+-- @changelog 0.2.5: メイン ImGui ウィンドウの Begin/End を常にペアにし、ドック ID の保存をメインウィンドウの End 直前のスナップショットに変更（スキャン進捗など別ウィンドウ後に GetWindowDockID していた誤保存を防止）。0.2.4: ReaPack index の全ファイル列挙・リサイズ関連。
 -- @about Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Bundled SQLite bindings (lsqlite3complete): MIT — see licenses/lsqlite3complete_LICENSE.txt. SQLite engine: public domain — see licenses/sqlite_PUBLIC_DOMAIN.txt. Layout: bin/README.md.
 -- @provides [main] oshibacomyaku_Sample Lode Manager.lua
 -- @provides [nomain] src/**/*.lua
