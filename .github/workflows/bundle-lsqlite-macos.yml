@@ -72,7 +72,7 @@ jobs:
           cp "_artifacts/lsqlite-darwin-arm64/lsqlite3complete-darwin-arm64.so" SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so
           python3 << 'PY'
           from pathlib import Path
-          p = Path("SampleLodeManager/motit_Sample Lode Manager.lua")
+          p = Path("SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua")
           t = p.read_text(encoding="utf-8")
           if "bin/darwin64/lsqlite3complete.so" in t:
               print("@provides already contains darwin64; skipping header patch")
@@ -84,7 +84,7 @@ jobs:
                   + "-- @provides [darwin-arm64 nomain] bin/darwin-arm64/lsqlite3complete.so\n"
               )
               if needle not in t:
-                  raise SystemExit("expected win64 @provides line not found; edit motit_Sample Lode Manager.lua")
+                  raise SystemExit("expected win64 @provides line not found; edit oshibacomyaku_Sample Lode Manager.lua")
               p.write_text(t.replace(needle, ins, 1), encoding="utf-8")
               print("patched @provides for darwin64 + darwin-arm64")
           PY
@@ -92,7 +92,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add SampleLodeManager/bin/darwin64/lsqlite3complete.so SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so "SampleLodeManager/motit_Sample Lode Manager.lua"
+          git add SampleLodeManager/bin/darwin64/lsqlite3complete.so SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so "SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua"
           git diff --staged --quiet && echo "No changes" && exit 0
           git commit -m "ci: bundle lsqlite3complete for macOS (darwin64, darwin-arm64)"
           git push

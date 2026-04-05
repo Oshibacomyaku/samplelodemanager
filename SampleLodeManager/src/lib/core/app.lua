@@ -5153,6 +5153,26 @@ local function loop()
       state.runtime.dock_restore_pending = false
     end
   end
+  -- Undocked (floating) script window: avoid a permanently narrow host size. FirstUseEver seeds width/height once;
+  -- SetNextWindowSizeConstraints (when exposed by ReaImGui) relaxes min/max so horizontal resize is possible.
+  do
+    local def_w, def_h = 920, 720
+    local min_w, min_h = 340, 220
+    local max_w, max_h = 100000, 100000
+    if r.ImGui_SetNextWindowSize then
+      local cond_fue = 0
+      if r.ImGui_Cond_FirstUseEver then
+        local ok_c, c = pcall(function() return r.ImGui_Cond_FirstUseEver() end)
+        if ok_c and c then cond_fue = c end
+      end
+      pcall(function() r.ImGui_SetNextWindowSize(ctx, def_w, def_h, cond_fue) end)
+    end
+    if r.ImGui_SetNextWindowSizeConstraints then
+      pcall(function()
+        r.ImGui_SetNextWindowSizeConstraints(ctx, min_w, min_h, max_w, max_h)
+      end)
+    end
+  end
   -- Existing ReaScripts typically use this 4-arg form.
   local visible, open = r.ImGui_Begin(ctx, C.SCRIPT_TITLE, true, flags)
 

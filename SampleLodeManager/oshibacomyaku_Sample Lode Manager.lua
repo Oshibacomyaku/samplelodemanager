@@ -1,9 +1,9 @@
 -- @description Sample Lode Manager
--- @version 0.2.1
--- @author motit
--- @changelog ReaTeam-style entry filename (motit_Sample Lode Manager.lua). Main window: allow horizontal/vertical resize (removed ImGui NoResize). See README for bundled SQLite (lsqlite3complete).
+-- @version 0.2.2
+-- @author oshibacomyaku
+-- @changelog Author / entry file: oshibacomyaku_Sample Lode Manager.lua (ReaPack shows this author). Floating window: default first size + optional size constraints so undocked width can be changed more reliably.
 -- @about Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Bundled SQLite bindings (lsqlite3complete): MIT — see licenses/lsqlite3complete_LICENSE.txt. SQLite engine: public domain — see licenses/sqlite_PUBLIC_DOMAIN.txt. Layout: bin/README.md.
--- @provides [main] motit_Sample Lode Manager.lua
+-- @provides [main] oshibacomyaku_Sample Lode Manager.lua
 -- @provides [nomain] src/**/*.lua
 -- @provides [nomain] src/python/**/*.py
 -- @provides [nomain] licenses/*.txt

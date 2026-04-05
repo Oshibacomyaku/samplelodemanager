@@ -10,7 +10,7 @@ Sample browser and manager for REAPER.
 - js_ReaScriptAPI
 
 These dependencies are not bundled in this repository.
-Install them via ReaPack before running `SampleLodeManager/motit_Sample Lode Manager.lua`.
+Install them via ReaPack before running `SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua`.
 
 ## Bundled with the ReaPack package (this repo)
 
@@ -26,7 +26,7 @@ The entry script prepends `SampleLodeManager/bin/<platform>/` to Lua’s `packag
 
 ## Entry Script
 
-- `SampleLodeManager/motit_Sample Lode Manager.lua` (ReaTeam-style name: `author_Action name here.lua`; appears in Actions as **Script: motit_Sample Lode Manager.lua**)
+- `SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua` (ReaTeam-style name: `author_Action name here.lua`; `@author` is used by ReaPack metadata; appears in Actions as **Script: oshibacomyaku_Sample Lode Manager.lua**)
 
 ## ReaPack Distribution
 
@@ -34,7 +34,7 @@ This repository is intended to be published through ReaPack.
 
 The distribution package includes:
 
-- `SampleLodeManager/motit_Sample Lode Manager.lua`
+- `SampleLodeManager/oshibacomyaku_Sample Lode Manager.lua`
 - `SampleLodeManager/src/**/*.lua`
 - `SampleLodeManager/src/python/**/*.py`
 - `SampleLodeManager/licenses/*.txt`
