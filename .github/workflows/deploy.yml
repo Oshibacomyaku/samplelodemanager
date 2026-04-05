@@ -28,5 +28,12 @@ jobs:
       # --amend: 同じ @version のまま @changelog やスクリプトを直したときも index の取得元コミットを更新する
       - name: Update index.xml
         run: reapack-index --commit --rebuild --amend -o index.xml .
+      - name: Refuse incomplete index (do not push)
+        run: |
+          n=$(grep -cE 'file="src/' index.xml || true)
+          if [ "$n" -lt 10 ]; then
+            echo "reapack-index produced too few src/ sources ($n); aborting push."
+            exit 1
+          fi
       - name: Push changes
         run: git push

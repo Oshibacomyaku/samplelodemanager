@@ -16,3 +16,11 @@ jobs:
         run: gem install reapack-index
       - name: Validate packages
         run: reapack-index --check .
+      # Multi-file パッケージは index に <source file="src/..."> が無いと、ReaPack がエントリだけ更新して app.lua が古いまま残る
+      - name: Verify index lists src/* sources
+        run: |
+          n=$(grep -cE 'file="src/' index.xml || true)
+          if [ "$n" -lt 10 ]; then
+            echo "index.xml must list src/*.lua and src/python/* (found $n lines with file=\"src/)."
+            exit 1
+          fi
