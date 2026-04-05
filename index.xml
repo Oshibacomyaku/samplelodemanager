@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Sample Lode Manager" commit="a579fd99f1062e1ada071e197ad3742fa3056766">
+<index version="1" name="Sample Lode Manager" commit="a434c2c6e44f843cad207283b714fd304318d19b">
   <category name="SampleLodeManager">
     <reapack name="oshibacomyaku_Sample Lode Manager.lua" type="script" desc="Sample Lode Manager">
       <metadata>
@@ -11,32 +11,32 @@
 }
 ]]></description>
       </metadata>
-      <version name="0.2.5" author="oshibacomyaku" time="2026-04-06T18:00:00Z">
-        <changelog><![CDATA[0.2.5: Fix main window ImGui Begin/End pairing when collapsed; persist dock ID from main window snapshot (avoid wrong ID after other ImGui windows). 0.2.4: List every @provides file in index.xml so ReaPack updates src/*.lua.]]></changelog>
-        <source main="main">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/oshibacomyaku_Sample%20Lode%20Manager.lua</source>
-        <source file="src/lib/cover_art.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/cover_art.lua</source>
-        <source file="src/lib/core/app.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/core/app.lua</source>
-        <source file="src/lib/core/scan_controller.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/core/scan_controller.lua</source>
-        <source file="src/lib/core/ui_pack.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/core/ui_pack.lua</source>
-        <source file="src/lib/core/ui_pack_manage_sources.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/core/ui_pack_manage_sources.lua</source>
-        <source file="src/lib/core/ui_samples_galaxy.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/core/ui_samples_galaxy.lua</source>
-        <source file="src/lib/core/ui_samples_list.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/core/ui_samples_list.lua</source>
-        <source file="src/lib/core/ui_search.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/core/ui_search.lua</source>
-        <source file="src/lib/core/ui_theme.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/core/ui_theme.lua</source>
-        <source file="src/lib/db/db_manager.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/db/db_manager.lua</source>
-        <source file="src/lib/db/sqlite_store.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/db/sqlite_store.lua</source>
-        <source file="src/lib/waveform.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/lib/waveform.lua</source>
-        <source file="src/python/auto_alias_suggest.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/python/auto_alias_suggest.py</source>
-        <source file="src/python/phase_a_filename_nlp.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/python/phase_a_filename_nlp.py</source>
-        <source file="src/python/phase_b2_audio_hints.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/python/phase_b2_audio_hints.py</source>
-        <source file="src/python/phase_c_rerank.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/python/phase_c_rerank.py</source>
-        <source file="src/python/phase_d_audio_features.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/python/phase_d_audio_features.py</source>
-        <source file="src/python/phase_e_embed_umap.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/src/python/phase_e_embed_umap.py</source>
-        <source file="licenses/lsqlite3complete_LICENSE.txt">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt</source>
-        <source file="licenses/sqlite_PUBLIC_DOMAIN.txt">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt</source>
-        <source platform="win64" file="bin/win64/lsqlite3complete.dll">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/bin/win64/lsqlite3complete.dll</source>
-        <source platform="darwin64" file="bin/darwin64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/bin/darwin64/lsqlite3complete.so</source>
-        <source platform="darwin-arm64" file="bin/darwin-arm64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/a579fd99f1062e1ada071e197ad3742fa3056766/SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so</source>
+      <version name="0.2.6" author="oshibacomyaku" time="2026-04-06T20:00:00Z">
+        <changelog><![CDATA[0.2.6: Add @noindex to src/*.lua so reapack-index --check passes (each .lua under a category is validated as a package). 0.2.5: ImGui Begin/End pairing; dock ID snapshot persist. 0.2.4: Full index sources for src/*.lua.]]></changelog>
+        <source main="main">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/oshibacomyaku_Sample%20Lode%20Manager.lua</source>
+        <source file="src/lib/cover_art.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/cover_art.lua</source>
+        <source file="src/lib/core/app.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/core/app.lua</source>
+        <source file="src/lib/core/scan_controller.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/core/scan_controller.lua</source>
+        <source file="src/lib/core/ui_pack.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/core/ui_pack.lua</source>
+        <source file="src/lib/core/ui_pack_manage_sources.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/core/ui_pack_manage_sources.lua</source>
+        <source file="src/lib/core/ui_samples_galaxy.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/core/ui_samples_galaxy.lua</source>
+        <source file="src/lib/core/ui_samples_list.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/core/ui_samples_list.lua</source>
+        <source file="src/lib/core/ui_search.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/core/ui_search.lua</source>
+        <source file="src/lib/core/ui_theme.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/core/ui_theme.lua</source>
+        <source file="src/lib/db/db_manager.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/db/db_manager.lua</source>
+        <source file="src/lib/db/sqlite_store.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/db/sqlite_store.lua</source>
+        <source file="src/lib/waveform.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/lib/waveform.lua</source>
+        <source file="src/python/auto_alias_suggest.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/python/auto_alias_suggest.py</source>
+        <source file="src/python/phase_a_filename_nlp.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/python/phase_a_filename_nlp.py</source>
+        <source file="src/python/phase_b2_audio_hints.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/python/phase_b2_audio_hints.py</source>
+        <source file="src/python/phase_c_rerank.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/python/phase_c_rerank.py</source>
+        <source file="src/python/phase_d_audio_features.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/python/phase_d_audio_features.py</source>
+        <source file="src/python/phase_e_embed_umap.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/src/python/phase_e_embed_umap.py</source>
+        <source file="licenses/lsqlite3complete_LICENSE.txt">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt</source>
+        <source file="licenses/sqlite_PUBLIC_DOMAIN.txt">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt</source>
+        <source platform="win64" file="bin/win64/lsqlite3complete.dll">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/bin/win64/lsqlite3complete.dll</source>
+        <source platform="darwin64" file="bin/darwin64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/bin/darwin64/lsqlite3complete.so</source>
+        <source platform="darwin-arm64" file="bin/darwin-arm64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/a434c2c6e44f843cad207283b714fd304318d19b/SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so</source>
       </version>
     </reapack>
   </category>
