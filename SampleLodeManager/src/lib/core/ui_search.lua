@@ -90,6 +90,15 @@ local function ensure_fn(fn, fallback)
   return function() end
 end
 
+local function is_imgui_ctx_valid()
+  if not (r and ctx) then return false end
+  if not r.ImGui_ValidatePtr then return true end
+  local ok_v, valid = pcall(function()
+    return r.ImGui_ValidatePtr(ctx, "ImGui_Context*")
+  end)
+  return ok_v and valid == true
+end
+
 local function imgui_key_pressed_named(which)
   if not ctx or not r.ImGui_IsKeyPressed then return false end
   local key = nil
@@ -414,15 +423,18 @@ function M.setup(deps)
             if ok_sc then chip_push_col_n = chip_push_col_n + 1 end
           end
           local chip_id = display .. "##" .. tostring(id_prefix or "chip") .. "_" .. tostring(i)
-          local left_clicked = r.ImGui_Button(ctx, chip_id, chip_w, chip_h)
+          local left_clicked = false
           local right_clicked = false
-          if r.ImGui_BeginPopupContextItem and r.ImGui_EndPopup then
-            local popup_id = "##chip_ctx_" .. tostring(id_prefix or "chip") .. "_" .. tostring(i)
-            if r.ImGui_BeginPopupContextItem(ctx, popup_id) then
-              right_clicked = true
-              r.ImGui_EndPopup(ctx)
+          pcall(function()
+            left_clicked = r.ImGui_Button(ctx, chip_id, chip_w, chip_h) == true
+            if r.ImGui_BeginPopupContextItem and r.ImGui_EndPopup then
+              local popup_id = "##chip_ctx_" .. tostring(id_prefix or "chip") .. "_" .. tostring(i)
+              if r.ImGui_BeginPopupContextItem(ctx, popup_id) then
+                right_clicked = true
+                r.ImGui_EndPopup(ctx)
+              end
             end
-          end
+          end)
           if type(on_toggle_tag) == "function" then
             if left_clicked then on_toggle_tag(tag, "include") end
             if right_clicked then on_toggle_tag(tag, "exclude") end
@@ -442,7 +454,9 @@ end
 
 function M.draw(win_w)
   if not (r and ctx and state) then return end
+  if not is_imgui_ctx_valid() then return end
   local pushed = safe_push_font(font_small, search_ui.font_small_px)
+  local ok_draw, draw_err = pcall(function()
   do
     local key_caption = state.key_filter_enabled and ("Key: " .. key_root_dual_label(state.key_root or "E") .. " v") or "Key v"
     local bpm_caption = "BPM v"
@@ -874,14 +888,20 @@ function M.draw(win_w)
       end
     end
 
-    r.ImGui_PushItemWidth(ctx, -1)
+    local pushed_tag_input_w = false
+    pcall(function()
+      r.ImGui_PushItemWidth(ctx, -1)
+      pushed_tag_input_w = true
+    end)
     local changed_inp, new_inp = ui_input_text_with_hint(
       "##tag_filter_input",
       "Search filename/tags... (Enter adds first suggestion)",
       state.tag_filter_input,
       256
     )
-    r.ImGui_PopItemWidth(ctx)
+    if pushed_tag_input_w then
+      pcall(function() r.ImGui_PopItemWidth(ctx) end)
+    end
     if changed_inp then
       state.tag_filter_input = new_inp
       state.needs_reload_samples = true
@@ -941,7 +961,14 @@ function M.draw(win_w)
           search_ui.tag_suggestions_max_h,
           search_ui.tag_suggestions_base_h + search_ui.tag_suggestions_row_h * math.min(#sugg, search_ui.tag_suggestions_visible_rows)
         )
-        if r.ImGui_BeginChild(ctx, "##tag_suggestions", 0, sugg_h, 1, 0) then
+        local suggestions_begun = false
+        local suggestions_visible = false
+        pcall(function()
+          local ret = r.ImGui_BeginChild(ctx, "##tag_suggestions", 0, sugg_h, 1, 0)
+          suggestions_begun = true
+          suggestions_visible = ret == true
+        end)
+        if suggestions_visible then
           for i, row in ipairs(sugg) do
             local tg = tostring(row.tag or "")
             local cnt = tonumber(row.count) or 0
@@ -958,7 +985,9 @@ function M.draw(win_w)
               state.tag_filter_input = ""
             end
           end
-          r.ImGui_EndChild(ctx)
+        end
+        if suggestions_begun then
+          pcall(function() r.ImGui_EndChild(ctx) end)
         end
       end
 
@@ -1025,8 +1054,14 @@ function M.draw(win_w)
         r.ImGui_TextWrapped(ctx, "No matching popular tags. Clear the input or add tags via Splice import.")
       end
   end
-
+  end)
   safe_pop_font(pushed)
+  if not ok_draw then
+    if state and state.runtime then
+      state.runtime.ctx_recreate_requested = true
+    end
+    return
+  end
 end
 
 return M

@@ -27,6 +27,15 @@ local function ensure_fn(fn, fallback)
   return function() end
 end
 
+local function is_imgui_ctx_valid()
+  if not (r and ctx) then return false end
+  if not r.ImGui_ValidatePtr then return true end
+  local ok_v, valid = pcall(function()
+    return r.ImGui_ValidatePtr(ctx, "ImGui_Context*")
+  end)
+  return ok_v and valid == true
+end
+
 function M.setup(deps)
   deps = type(deps) == "table" and deps or {}
   r = deps.r
@@ -52,9 +61,18 @@ end
 
 function M.draw(win_w, list_h)
   if not (r and ctx and state and type(galaxy_ops) == "table") then return end
+  if not is_imgui_ctx_valid() then return end
   list_h = math.max(SAMPLE_SECTION_MIN_H, math.floor(tonumber(list_h) or 120))
   local galaxy_child_flags = window_flag_noresize() | window_flag_noscrollbar() | window_flag_noscroll_with_mouse()
-  if r.ImGui_BeginChild(ctx, "##sample_galaxy", 0, list_h, 1, galaxy_child_flags) then
+  local galaxy_child_visible = false
+  local galaxy_child_begun = false
+  local ok_begin = pcall(function()
+    local ret = r.ImGui_BeginChild(ctx, "##sample_galaxy", 0, list_h, 1, galaxy_child_flags)
+    galaxy_child_begun = true
+    galaxy_child_visible = ret == true
+  end)
+  if ok_begin and galaxy_child_visible then
+    local ok_draw, _draw_err = pcall(function()
     local zoom = tonumber(state.ui.galaxy_zoom) or 1.0
     zoom = math.max(1.0, math.min(8.0, zoom))
     state.ui.galaxy_zoom = zoom
@@ -476,7 +494,13 @@ function M.draw(win_w, list_h)
       "Galaxy view: oneshot %d / plotted %d / no_embed %d / feat rows %d / embedded %d / visible %d / dots %d%s",
       oneshot_total, #points, no_embed_n, audio_feature_rows, embed_rows, visible, visible_bins, status
     ))
-    r.ImGui_EndChild(ctx)
+    end)
+    if not ok_draw and state and state.runtime then
+      state.runtime.ctx_recreate_requested = true
+    end
+  end
+  if galaxy_child_begun then
+    pcall(function() r.ImGui_EndChild(ctx) end)
   end
 end
 

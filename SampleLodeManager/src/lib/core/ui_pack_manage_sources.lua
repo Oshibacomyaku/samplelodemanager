@@ -20,6 +20,38 @@ local function ensure_fn(fn, fallback)
   return function() end
 end
 
+local function is_imgui_ctx_valid()
+  if not (r and ctx) then return false end
+  if not r.ImGui_ValidatePtr then return true end
+  local ok_v, valid = pcall(function()
+    return r.ImGui_ValidatePtr(ctx, "ImGui_Context*")
+  end)
+  return ok_v and valid == true
+end
+
+local function begin_child_safe(id, w, h, border, flags)
+  if not is_imgui_ctx_valid() then
+    return false, false
+  end
+  local begun = false
+  local visible = false
+  local ok_begin = pcall(function()
+    local ret = r.ImGui_BeginChild(ctx, id, w, h, border, flags)
+    begun = true
+    visible = ret == true
+  end)
+  if not ok_begin then
+    begun = false
+    visible = false
+  end
+  return begun, visible
+end
+
+local function end_child_safe(begun)
+  if not begun then return end
+  pcall(function() r.ImGui_EndChild(ctx) end)
+end
+
 function M.setup(deps)
   deps = type(deps) == "table" and deps or {}
   r = deps.r
@@ -61,8 +93,8 @@ end
 
 function M.draw_modal()
   if not (r and ctx and state) then return end
+  if not is_imgui_ctx_valid() then return end
   if not r.ImGui_BeginPopupModal then return end
-
   if r.ImGui_SetNextWindowSize then
     local cond = 0
     if r.ImGui_Cond_FirstUseEver then cond = r.ImGui_Cond_FirstUseEver() end
@@ -71,8 +103,7 @@ function M.draw_modal()
   local opened = false
   pcall(function()
     opened = r.ImGui_BeginPopupModal(ctx, "Manage Sources##manage_sources_modal", true, 0) == true
-  end)
-  if opened then
+  end)  if opened then
     r.ImGui_TextWrapped(ctx, "Splice: import sounds.db. External folders: add root/single pack, then rescan.")
 
     if not state.store.available or not state.store.conn then
@@ -83,15 +114,23 @@ function M.draw_modal()
       if r.ImGui_BeginTabBar then
         local ok_tb, ret_tb = pcall(r.ImGui_BeginTabBar, ctx, "##manage_sources_tabbar", 0)
         tabbar_open = ok_tb and ret_tb ~= false
-      end
-      if tabbar_open then
-        if r.ImGui_BeginTabItem(ctx, "External") then
-          r.ImGui_PushItemWidth(ctx, -1)
+      end      if tabbar_open then
+        local external_tab_open = false
+        if r.ImGui_BeginTabItem then
+          local ok_ext, ret_ext = pcall(r.ImGui_BeginTabItem, ctx, "External")
+          external_tab_open = ok_ext and ret_ext == true
+        end        if external_tab_open then
+          local pushed_root_w = false
+          pcall(function()
+            r.ImGui_PushItemWidth(ctx, -1)
+            pushed_root_w = true
+          end)
           local root_val = tostring(state.manage.root_path_input or "")
           local changed, new_text = ui_input_text_with_hint("##manage_root_path_input", "External root path", root_val, 512)
-          r.ImGui_PopItemWidth(ctx)
-          if changed and new_text ~= nil then state.manage.root_path_input = tostring(new_text) end
-          if r.ImGui_Button(ctx, "Paste root path", -1, 22) then
+          if pushed_root_w then
+            pcall(function() r.ImGui_PopItemWidth(ctx) end)
+          end
+          if changed and new_text ~= nil then state.manage.root_path_input = tostring(new_text) end          if r.ImGui_Button(ctx, "Paste root path", -1, 22) then
             local ok_clip, clip_text = pcall(function()
               if r.ImGui_GetClipboardText then return r.ImGui_GetClipboardText(ctx) end
               return nil
@@ -139,8 +178,7 @@ function M.draw_modal()
               state.needs_reload_samples = true
               reload_pack_lists()
             end
-          end
-          r.ImGui_Spacing(ctx)
+          end          r.ImGui_Spacing(ctx)
           r.ImGui_Separator(ctx)
           r.ImGui_Text(ctx, "Library")
           r.ImGui_TextWrapped(ctx, "Rescan: sync enabled roots to the database (new/changed files; usually fast).")
@@ -174,7 +212,6 @@ function M.draw_modal()
               end
             end
           end
-
           r.ImGui_Separator(ctx)
           r.ImGui_Text(ctx, "Configured paths")
           local root_rows = {}
@@ -186,8 +223,13 @@ function M.draw_modal()
               root_rows = rows
             end
           end
-          local list_h = math.min(180, 22 + 24 * math.max(1, #root_rows))
-          if r.ImGui_BeginChild(ctx, "##configured_paths_list", 0, list_h, 1, window_flag_always_vertical_scrollbar()) then
+          local list_h = math.min(180, 22 + 24 * math.max(1, #root_rows))          local configured_paths_begun, configured_paths_visible = begin_child_safe(
+            "##configured_paths_list",
+            0,
+            list_h,
+            1,
+            window_flag_always_vertical_scrollbar()
+          )          if configured_paths_visible then
             if #root_rows == 0 then
               r.ImGui_Text(ctx, "(none)")
             else
@@ -195,8 +237,7 @@ function M.draw_modal()
                 local rid = tonumber(rr.id)
                 local path = tostring(rr.path or "")
                 local src = tostring(rr.source_type or "")
-                local mode = tostring(rr.mode or "")
-                r.ImGui_PushID(ctx, "root_row_" .. tostring(i))
+                local mode = tostring(rr.mode or "")                r.ImGui_PushID(ctx, "root_row_" .. tostring(i))
                 if r.ImGui_SmallButton(ctx, "x##del_root") then
                   if sqlite_store and type(sqlite_store.delete_root) == "function" and rid and rid > 0 then
                     local ok_del, ok_ret, err_ret = pcall(function()
@@ -209,21 +250,31 @@ function M.draw_modal()
                       state.store.error = tostring(err_ret or "delete root failed")
                     end
                   end
-                end
-                r.ImGui_SameLine(ctx, 0, 6)
-                r.ImGui_TextWrapped(ctx, string.format("[%s/%s] %s", src, mode, path))
-                r.ImGui_PopID(ctx)
+                end                r.ImGui_SameLine(ctx, 0, 6)
+                r.ImGui_TextWrapped(ctx, string.format("[%s/%s] %s", src, mode, path))                r.ImGui_PopID(ctx)
               end
             end
-            r.ImGui_EndChild(ctx)
           end
-          r.ImGui_EndTabItem(ctx)
-        end
+          if configured_paths_begun and configured_paths_visible then
+            end_child_safe(true)
+          else          end          if r.ImGui_EndTabItem then
+            pcall(r.ImGui_EndTabItem, ctx)
+          end        end
 
-        if r.ImGui_BeginTabItem(ctx, "Splice") then
-          r.ImGui_PushItemWidth(ctx, -1)
+        local splice_tab_open = false
+        if r.ImGui_BeginTabItem then
+          local ok_sp, ret_sp = pcall(r.ImGui_BeginTabItem, ctx, "Splice")
+          splice_tab_open = ok_sp and ret_sp == true
+        end        if splice_tab_open then
+          local pushed_splice_db_w = false
+          pcall(function()
+            r.ImGui_PushItemWidth(ctx, -1)
+            pushed_splice_db_w = true
+          end)
           local db_changed, db_text = ui_input_text_with_hint("##splice_db_path", "Path to sounds.db...", state.manage.splice_db_path_input, 1024)
-          r.ImGui_PopItemWidth(ctx)
+          if pushed_splice_db_w then
+            pcall(function() r.ImGui_PopItemWidth(ctx) end)
+          end
           if db_changed then
             state.manage.splice_db_path_input = db_text
             set_persisted_splice_db_path(db_text)
@@ -276,10 +327,16 @@ function M.draw_modal()
 
           r.ImGui_Separator(ctx)
           r.ImGui_TextWrapped(ctx, "Relocate Splice files: index audio under the folders below, match by filename to Splice samples, then update paths. Multiple folders allowed.")
-          r.ImGui_PushItemWidth(ctx, -1)
+          local pushed_relink_w = false
+          pcall(function()
+            r.ImGui_PushItemWidth(ctx, -1)
+            pushed_relink_w = true
+          end)
           local rel_in = tostring(state.manage.splice_relink_folder_input or "")
           local rel_changed, rel_new = ui_input_text_with_hint("##splice_relink_folder_input", "Folder to search (add several if samples are scattered)...", rel_in, 1024)
-          r.ImGui_PopItemWidth(ctx)
+          if pushed_relink_w then
+            pcall(function() r.ImGui_PopItemWidth(ctx) end)
+          end
           if rel_changed and rel_new ~= nil then state.manage.splice_relink_folder_input = tostring(rel_new) end
           if r.ImGui_Button(ctx, "Add search folder", -1, 22) then
             relink_roots_add_path(state.manage.splice_relink_folder_input)
@@ -300,7 +357,14 @@ function M.draw_modal()
           if type(rel_roots) ~= "table" then rel_roots = {} end
           r.ImGui_Text(ctx, "Search folders:")
           local rel_list_h = math.min(140, 20 + 22 * math.max(1, #rel_roots))
-          if r.ImGui_BeginChild(ctx, "##splice_relink_roots_list", 0, rel_list_h, 1, window_flag_always_vertical_scrollbar()) then
+          local splice_roots_begun, splice_roots_visible = begin_child_safe(
+            "##splice_relink_roots_list",
+            0,
+            rel_list_h,
+            1,
+            window_flag_always_vertical_scrollbar()
+          )
+          if splice_roots_visible then
             if #rel_roots == 0 then
               r.ImGui_Text(ctx, "(none)")
             else
@@ -317,8 +381,8 @@ function M.draw_modal()
                 r.ImGui_PopID(ctx)
               end
             end
-            r.ImGui_EndChild(ctx)
           end
+          end_child_safe(splice_roots_begun)
           if r.ImGui_Button(ctx, "Scan folders & update paths (Splice)", -1, 24) then
             if #rel_roots == 0 then
               state.store.error = "Add at least one search folder."
@@ -380,39 +444,49 @@ function M.draw_modal()
             if type(dups) == "table" and #dups > 0 then
               r.ImGui_Text(ctx, "Duplicate filenames on disk (arbitrary pick per row):")
               local dup_h = math.min(200, 16 + 18 * math.min(#dups, 12))
-              if r.ImGui_BeginChild(ctx, "##splice_relink_dup_list", 0, dup_h, 1, window_flag_always_vertical_scrollbar()) then
+              local splice_dup_begun, splice_dup_visible = begin_child_safe(
+                "##splice_relink_dup_list",
+                0,
+                dup_h,
+                1,
+                window_flag_always_vertical_scrollbar()
+              )
+              if splice_dup_visible then
                 for _, d in ipairs(dups) do
                   r.ImGui_Text(ctx, string.format("  %s  x%s", tostring(d.filename), tostring(d.count)))
                 end
-                r.ImGui_EndChild(ctx)
               end
+              end_child_safe(splice_dup_begun)
             end
             local ee = rep.enumerate_errors
             if type(ee) == "table" and #ee > 0 then
               r.ImGui_Text(ctx, "Folder scan errors:")
               for _, er in ipairs(ee) do
-                r.ImGui_TextWrapped(ctx, string.format("%s — %s", tostring(er.root), tostring(er.err)))
+                r.ImGui_TextWrapped(ctx, string.format("%s  E%s", tostring(er.root), tostring(er.err)))
               end
             end
-          end
-
-          r.ImGui_EndTabItem(ctx)
-        end
-        if r.ImGui_EndTabBar then r.ImGui_EndTabBar(ctx) end
-      end
+          end          if r.ImGui_EndTabItem then
+            pcall(r.ImGui_EndTabItem, ctx)
+          end        end
+        if r.ImGui_EndTabBar then
+          pcall(r.ImGui_EndTabBar, ctx)
+        end      end
+    end    if state.store.error and state.store.error ~= "" then
+      pcall(function()
+        r.ImGui_Separator(ctx)
+        r.ImGui_TextWrapped(ctx, tostring(state.store.error))
+      end)
     end
-
-    if state.store.error and state.store.error ~= "" then
-      r.ImGui_Separator(ctx)
-      r.ImGui_TextWrapped(ctx, tostring(state.store.error))
-    end
-    if r.ImGui_Button(ctx, "Close##manage_sources_close", -1, 24) and r.ImGui_CloseCurrentPopup then
-      r.ImGui_CloseCurrentPopup(ctx)
+    local close_clicked = false
+    pcall(function()
+      close_clicked = r.ImGui_Button(ctx, "Close##manage_sources_close", -1, 24) == true
+    end)
+    if close_clicked and r.ImGui_CloseCurrentPopup then
+      pcall(function() r.ImGui_CloseCurrentPopup(ctx) end)
     end
     if r.ImGui_EndPopup then
-      r.ImGui_EndPopup(ctx)
-    end
-  end
+      pcall(function() r.ImGui_EndPopup(ctx) end)
+    end  end
 end
 
 return M

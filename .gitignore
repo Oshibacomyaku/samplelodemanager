@@ -9,3 +9,7 @@ cover_cache/
 **/cover_cache/
 __pycache__/
 *.pyc
+
+# Local debug NDJSON logs (large; do not commit)
+debug-380ad7.log
+debug-*.log

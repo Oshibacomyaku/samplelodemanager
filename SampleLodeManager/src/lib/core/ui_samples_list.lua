@@ -53,6 +53,15 @@ local function ensure_fn(fn, fallback)
   return function() end
 end
 
+local function is_imgui_ctx_valid()
+  if not (r and ctx) then return false end
+  if not r.ImGui_ValidatePtr then return true end
+  local ok_v, valid = pcall(function()
+    return r.ImGui_ValidatePtr(ctx, "ImGui_Context*")
+  end)
+  return ok_v and valid == true
+end
+
 local function draw_selected_overlay_for_last_item()
   if not (r.ImGui_GetItemRectMin and r.ImGui_GetItemRectMax and r.ImGui_GetWindowDrawList) then return end
   local ok1, x1, y1 = pcall(r.ImGui_GetItemRectMin, ctx)
@@ -121,8 +130,13 @@ end
 
 function M.draw(_win_w, list_h)
   if not (r and ctx and state) then return end
+  if not is_imgui_ctx_valid() then return end
   list_h = math.max(SAMPLE_SECTION_MIN_H, math.floor(tonumber(list_h) or 120))
   local pushed_font = safe_push_font(font_main, list_ui.font_px)
+  local pushed_item_spacing = false
+  local list_child_begun = false
+  local list_child_visible = false
+  local table_begun = false
 
   local function key_root_dual_label(root_raw)
     local root = tostring(root_raw or ""):upper():gsub("^%s+", ""):gsub("%s+$", "")
@@ -178,9 +192,28 @@ function M.draw(_win_w, list_h)
     return root_dual
   end
 
-  r.ImGui_PushStyleVar(ctx, r.ImGui_StyleVar_ItemSpacing(), 0, 6)
+  local ok_draw, _draw_err = pcall(function()
+  pcall(function()
+    r.ImGui_PushStyleVar(ctx, r.ImGui_StyleVar_ItemSpacing(), 0, 6)
+    pushed_item_spacing = true
+  end)
   local flags = window_flag_noresize() | window_flag_noscrollbar() | window_flag_noscroll_with_mouse()
-  if r.ImGui_BeginChild(ctx, "##sample_list", 0, list_h, 1, flags) then
+  local pre_child_w, pre_child_h = nil, nil
+  pcall(function()
+    pre_child_w, pre_child_h = r.ImGui_GetWindowSize(ctx)
+  end)
+  local ok_child = pcall(function()
+    local ret = r.ImGui_BeginChild(ctx, "##sample_list", 0, list_h, 1, flags)
+    list_child_begun = true
+    list_child_visible = ret == true
+  end)
+  local post_child_w, post_child_h = nil, nil
+  pcall(function()
+    post_child_w, post_child_h = r.ImGui_GetWindowSize(ctx)
+  end)
+  if not ok_child then
+    list_child_visible = false
+  end  if list_child_visible then
     if cover_art and state.runtime.cover_art and state.ui.cover_auto_download == true then
       state.runtime.cover_art.ctx_ref = ctx
       cover_art.process_queue(state.runtime.cover_art.queue, 1)
@@ -194,8 +227,11 @@ function M.draw(_win_w, list_h)
       table_flags = table_flags | r.ImGui_TableFlags_BordersV()
     end
 
-    if r.ImGui_BeginTable(ctx, "samples_table", 5, table_flags) then
-      r.ImGui_TableSetupColumn(ctx, "##cov", r.ImGui_TableColumnFlags_WidthFixed(), list_ui.col_cover_w)
+    local begin_table_ok, begin_table_ret = pcall(function()
+      return r.ImGui_BeginTable(ctx, "samples_table", 5, table_flags)
+    end)
+    if begin_table_ok and begin_table_ret == true then
+      table_begun = true      r.ImGui_TableSetupColumn(ctx, "##cov", r.ImGui_TableColumnFlags_WidthFixed(), list_ui.col_cover_w)
       r.ImGui_TableSetupColumn(ctx, "Filename")
       r.ImGui_TableSetupColumn(ctx, "BPM", r.ImGui_TableColumnFlags_WidthFixed(), list_ui.col_bpm_w)
       r.ImGui_TableSetupColumn(ctx, "Key", r.ImGui_TableColumnFlags_WidthFixed(), list_ui.col_key_w)
@@ -450,12 +486,24 @@ function M.draw(_win_w, list_h)
       end
 
       draw_rows_virtualized(#state.rows, draw_row, "sample_row_clipper")
-      r.ImGui_EndTable(ctx)
+      if table_begun and r.ImGui_EndTable then
+        pcall(function() r.ImGui_EndTable(ctx) end)
+        table_begun = false
+      end
     end
-    r.ImGui_EndChild(ctx)
   end
-  r.ImGui_PopStyleVar(ctx, 1)
+  end)  if table_begun and r.ImGui_EndTable then
+    pcall(function() r.ImGui_EndTable(ctx) end)
+    table_begun = false
+  end
+  if list_child_begun and list_child_visible then
+    local ok_end_child, err_end_child = pcall(function() r.ImGui_EndChild(ctx) end)  elseif list_child_begun then  end  if pushed_item_spacing and r.ImGui_PopStyleVar then
+    pcall(function() r.ImGui_PopStyleVar(ctx, 1) end)
+  end
   safe_pop_font(pushed_font)
+  if not ok_draw and state and state.runtime then
+    state.runtime.ctx_recreate_requested = true
+  end
 end
 
 return M

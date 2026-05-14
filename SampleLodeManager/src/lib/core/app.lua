@@ -185,12 +185,25 @@ local function supports_native_tab_colors()
     and type(r.ImGui_Col_TabUnfocusedActive) == "function"
 end
 
+local function is_imgui_ctx_valid()
+  if not ctx then return false end
+  if not r.ImGui_ValidatePtr then return true end
+  local ok_v, valid = pcall(function()
+    return r.ImGui_ValidatePtr(ctx, "ImGui_Context*")
+  end)
+  return ok_v and valid == true
+end
+
 local function content_width(fallback)
-  if r.ImGui_GetContentRegionAvail then
-    local w = select(1, r.ImGui_GetContentRegionAvail(ctx))
-    if type(w) == "number" and w > 0 then
-      return w
-    end
+  if not r.ImGui_GetContentRegionAvail then
+    return fallback or 0
+  end
+  if not is_imgui_ctx_valid() then return fallback or 0 end
+  local ok_w, w = pcall(function()
+    return select(1, r.ImGui_GetContentRegionAvail(ctx))
+  end)
+  if ok_w and type(w) == "number" and w > 0 then
+    return w
   end
   return fallback or 0
 end
@@ -395,7 +408,7 @@ local function draw_fading_text_line(id, text, width)
     end
   end
   local flags = window_flag_noresize() | window_flag_noscrollbar() | window_flag_noscroll_with_mouse()
-  if r.ImGui_BeginChild(ctx, "##fade_text_" .. tostring(id or "txt"), w, line_h + 2, 0, flags) then
+  local fade_child_visible = r.ImGui_BeginChild(ctx, "##fade_text_" .. tostring(id or "txt"), w, line_h + 2, 0, flags)  if fade_child_visible then
     r.ImGui_Text(ctx, tostring(text or ""))
     local dl = nil
     pcall(function()
@@ -420,9 +433,10 @@ local function draw_fading_text_line(id, text, width)
         end
       end
     end
-    r.ImGui_EndChild(ctx)
   end
-end
+  local ok_fade_end, err_fade_end = pcall(function()
+    r.ImGui_EndChild(ctx)
+  end)end
 
 local PREVIEW_GAIN_DB_MIN = -60.0
 local PREVIEW_GAIN_DB_MAX = 6.0
@@ -537,6 +551,7 @@ end
 
 local function safe_push_font(font, size_px)
   if not r.ImGui_PushFont then return end
+  if not is_imgui_ctx_valid() then return false end
   -- This binding expects at least 3 arguments for PushFont(ctx, font, ...).
   local size = tonumber(size_px) or 12
   return pcall(function()
@@ -547,10 +562,10 @@ end
 local function safe_pop_font(pushed)
   if not pushed then return end
   if not r.ImGui_PopFont then return end
-  local ok = pcall(function()
+  if not is_imgui_ctx_valid() then return end
+  pcall(function()
     r.ImGui_PopFont(ctx)
   end)
-  if not ok then pcall(function() r.ImGui_PopFont() end) end
 end
 
 local function get_persisted_splice_db_path()
@@ -1243,8 +1258,8 @@ local function update_selected_sample_snapshot(row)
   }
 end
 
--- defer_stop_preview: true かつ Auto Preview on Select のとき、直後に play が走る前提で
--- 停止を遅延する（PCM オープンや無音スキップ計算の間、前のプレビューを鳴らし続ける）。
+-- defer_stop_preview: true ?? Auto Preview on Select ??????? play ??????
+-- ????????E?ECM ?????E??????E?E???E??????????????????E
 local function set_selected_row(row_idx, defer_stop_preview)
   local new_idx = tonumber(row_idx)
   if not new_idx then return end
@@ -2562,6 +2577,7 @@ end
 
 -- Default IsWindowHovered/Focused excludes child windows; detail waveform lives inside ##detail_panel.
 local function app_script_window_active_for_input()
+  if not is_imgui_ctx_valid() then return false end
   local focused = false
   local hovered = false
   if r.ImGui_IsWindowFocused then
@@ -2712,7 +2728,7 @@ local function begin_drag_for_row(row, row_idx)
     active = r.ImGui_IsItemActive(ctx)
   end)
 
-  -- row上で押し始めた瞬間または押下中のactive状態を捕捉して、取りこぼしを減らす
+  -- row????????????E????active?????????????????E
   if mouse_down and (hovered or active) and ((not state.runtime.dnd_last_mouse_down) or (not state.runtime.dnd_drag_path)) then
     set_selected_row(row_idx)
     state.runtime.dnd_drag_path = row.path
@@ -2907,7 +2923,7 @@ function tag_ops.clear_all_search_filters()
   state.needs_reload_samples = true
 end
 
--- One-shot pipeline: Rescan All (async) → Repair missing → Rebuild embed (stage-driven).
+-- One-shot pipeline: Rescan All (async) ?ERepair missing ?ERebuild embed (stage-driven).
 tick_galaxy_full_refresh = function()
   local gfr = state and state.manage and state.manage.galaxy_full_refresh
   if not gfr then return end
@@ -2999,7 +3015,7 @@ tick_galaxy_full_refresh = function()
     if dropped > 0 then
       if min_valid <= 1 then
         msg = msg .. "\nSkipped (no numeric analysis fields): " .. tostring(dropped)
-          .. " (all NULL in analysis — run forced re-analyze from Manage if needed)"
+          .. " (all NULL in analysis ?Erun forced re-analyze from Manage if needed)"
       else
         msg = msg .. "\nDropped low-valid rows: " .. tostring(dropped) .. " (min_valid=" .. tostring(min_valid) .. ")"
       end
@@ -3287,7 +3303,7 @@ function galaxy_ops.infer_family_name(filename_lc)
   return "other"
 end
 
--- 0xRRGGBBAA — galaxy dot fill by inferred family (see draw loop for selected: larger fill + same-color ring).
+-- 0xRRGGBBAA ?Egalaxy dot fill by inferred family (see draw loop for selected: larger fill + same-color ring).
 -- GALAXY_VIEW_MARGIN: extra pan range in normalized map space so edge points are not stuck to the canvas border.
 local GALAXY_VIEW_MARGIN = 0.22
 -- Extra range only toward larger map Y (screen downward) when zoomed out.
@@ -3598,6 +3614,7 @@ function galaxy_ops.hash01_from_int(n)
 end
 
 local function draw_samples_section(win_w, list_h)
+  if not is_imgui_ctx_valid() then return end
   local tab = state.ui.sample_view_tab
   if tab ~= "list" and tab ~= "galaxy" then
     tab = "list"
@@ -3644,7 +3661,10 @@ local function draw_samples_section(win_w, list_h)
           push_n = push_n + 1
         end)
       end
-      local clicked = r.ImGui_Button(ctx, label .. id, w, h) == true
+      local clicked = false
+      pcall(function()
+        clicked = r.ImGui_Button(ctx, label .. id, w, h) == true
+      end)
       local rect = nil
       do
         local ok_r1, x1, y1 = pcall(r.ImGui_GetItemRectMin, ctx)
@@ -3664,7 +3684,9 @@ local function draw_samples_section(win_w, list_h)
       state.ui.sample_view_tab = "list"
     end
     local sample_view_tab_gap = 6
-    r.ImGui_SameLine(ctx, 0, sample_view_tab_gap)
+    pcall(function()
+      r.ImGui_SameLine(ctx, 0, sample_view_tab_gap)
+    end)
     local clicked_gal, rect2 = draw_mono_tab_button("Galaxy", "##sample_view_galaxy", tab == "galaxy", wtab, 22)
     if clicked_gal then
       state.ui.sample_view_tab = "galaxy"
@@ -3710,10 +3732,24 @@ local function draw_samples_section(win_w, list_h)
 end
 
 local function draw_detail_section(win_w, detail_h)
+  if not is_imgui_ctx_valid() then return end
   detail_h = math.max(C.DETAIL_PANEL_MIN_H, math.floor(tonumber(detail_h) or 120))
   -- Scrollable detail: vertical scrollbar always visible; mouse wheel scrolls when hovered.
   local flags = window_flag_noresize() | window_flag_always_vertical_scrollbar()
-  if r.ImGui_BeginChild(ctx, "##detail_panel", 0, detail_h, 1, flags) then
+  local detail_panel_visible = false
+  local detail_child_begun = false
+  local detail_pre_w, detail_pre_h = nil, nil
+  pcall(function()
+    detail_pre_w, detail_pre_h = r.ImGui_GetWindowSize(ctx)
+  end)
+  local ok_detail_begin = pcall(function()
+    detail_panel_visible = r.ImGui_BeginChild(ctx, "##detail_panel", 0, detail_h, 1, flags) == true
+    detail_child_begun = true
+  end)
+  local detail_post_w, detail_post_h = nil, nil
+  pcall(function()
+    detail_post_w, detail_post_h = r.ImGui_GetWindowSize(ctx)
+  end)  if ok_detail_begin and detail_panel_visible then
     if state.runtime then
       state.runtime.detail_preview_interactive = false
       state.runtime.wave_screen_rect = nil
@@ -4050,7 +4086,7 @@ local function draw_detail_section(win_w, detail_h)
           end)
           pushed_tags_scrollbar_size = ok_sv == true
         end
-        if r.ImGui_BeginChild(ctx, "##detail_tags_hscroll", 0, C.DETAIL_TAGS_STRIP_H, 0, child_flags) then
+        local tags_child_visible = r.ImGui_BeginChild(ctx, "##detail_tags_hscroll", 0, C.DETAIL_TAGS_STRIP_H, 0, child_flags)        if tags_child_visible then
           local gap = 4
           for i, raw_tag in ipairs(tags) do
             local tag = tostring(raw_tag or "")
@@ -4089,8 +4125,13 @@ local function draw_detail_section(win_w, detail_h)
               end
             end
           end
-          r.ImGui_EndChild(ctx)
         end
+        if tags_child_visible then
+          local ok_end_tags, err_end_tags = pcall(function()
+            r.ImGui_EndChild(ctx)
+          end)
+          if not ok_end_tags then          end
+        else        end
         if pushed_tags_scrollbar_size and r.ImGui_PopStyleVar then
           pcall(function() r.ImGui_PopStyleVar(ctx, 1) end)
         end
@@ -4253,8 +4294,13 @@ local function draw_detail_section(win_w, detail_h)
       end
     end
 
-    r.ImGui_EndChild(ctx)
   end
+  if detail_child_begun and detail_panel_visible and is_imgui_ctx_valid() then
+    local ok_end_detail, err_end_detail = pcall(function() r.ImGui_EndChild(ctx) end)
+    if not ok_end_detail then    end
+    local ok_after_end_probe, p_w, p_h = pcall(function()
+      return r.ImGui_GetWindowSize(ctx)
+    end)  elseif detail_child_begun and (not detail_panel_visible) then  end
 end
 
 -- ImGui packed color 0xRRGGBBAA (same convention as waveform.lua)
@@ -4314,14 +4360,27 @@ local function draw_panel_splitter_resolve(win_w, which, current_h, min_h, max_h
   min_h = math.max(40, math.floor(tonumber(min_h) or 72))
   max_h = math.max(min_h + 1, math.floor(tonumber(max_h) or 400))
   current_h = math.max(min_h, math.min(max_h, math.floor(tonumber(current_h) or min_h)))
+  if not is_imgui_ctx_valid() then
+    return current_h
+  end
 
   local spl_h = 8
   local w = math.max(24, content_width(win_w))
   local id = "##hsplit_" .. tostring(which)
+  local item_drawn = false
   if r.ImGui_InvisibleButton then
-    r.ImGui_InvisibleButton(ctx, id, w, spl_h)
+    local ok_btn = pcall(function()
+      item_drawn = r.ImGui_InvisibleButton(ctx, id, w, spl_h) ~= nil
+    end)
+    item_drawn = item_drawn or ok_btn
   elseif r.ImGui_Button then
-    r.ImGui_Button(ctx, " " .. id, w, spl_h)
+    local ok_btn = pcall(function()
+      item_drawn = r.ImGui_Button(ctx, " " .. id, w, spl_h) ~= nil
+    end)
+    item_drawn = item_drawn or ok_btn
+  end
+  if not item_drawn then
+    return current_h
   end
 
   local active = false
@@ -4448,40 +4507,52 @@ local function persist_ui_state(now_ts)
 end
 
 local function draw_collapsed_pack_controls()
+  if not is_imgui_ctx_valid() then return end
   local flags = window_flag_noresize() | window_flag_noscroll_with_mouse()
   if r.ImGui_WindowFlags_HorizontalScrollbar then
     flags = flags | r.ImGui_WindowFlags_HorizontalScrollbar()
   end
-  if not r.ImGui_BeginChild(ctx, "##pack_collapsed_controls", 0, 28, 0, flags) then
-    return
-  end
-  if #state.filter_pack_ids == 0 then
-    r.ImGui_Text(ctx, "Active packs: all")
-  else
-    if r.ImGui_SmallButton(ctx, "Clear packs##collapsed_pack_clear") then
-      filter_pack_ids_clear()
-    end
-    for i, pid in ipairs(state.filter_pack_ids) do
-      r.ImGui_SameLine(ctx, 0, 4)
-      local nm = tostring(pack_display_name_by_id(pid) or ("#" .. tostring(pid)))
-      if #nm > 24 then nm = nm:sub(1, 24) .. "..." end
-      if r.ImGui_SmallButton(ctx, "x " .. nm .. "##collapsed_pack_rm_" .. tostring(i)) then
-        filter_pack_ids_remove_at(i)
-        break
+  local pack_controls_visible = false
+  local pack_child_begun = false
+  local ok_pack_begin = pcall(function()
+    pack_controls_visible = r.ImGui_BeginChild(ctx, "##pack_collapsed_controls", 0, 28, 0, flags) == true
+    pack_child_begun = true
+  end)  if ok_pack_begin and pack_controls_visible then
+    if #state.filter_pack_ids == 0 then
+      r.ImGui_Text(ctx, "Active packs: all")
+    else
+      if r.ImGui_SmallButton(ctx, "Clear packs##collapsed_pack_clear") then
+        filter_pack_ids_clear()
+      end
+      for i, pid in ipairs(state.filter_pack_ids) do
+        r.ImGui_SameLine(ctx, 0, 4)
+        local nm = tostring(pack_display_name_by_id(pid) or ("#" .. tostring(pid)))
+        if #nm > 24 then nm = nm:sub(1, 24) .. "..." end
+        if r.ImGui_SmallButton(ctx, "x " .. nm .. "##collapsed_pack_rm_" .. tostring(i)) then
+          filter_pack_ids_remove_at(i)
+          break
+        end
       end
     end
   end
-  r.ImGui_EndChild(ctx)
+  if pack_child_begun and is_imgui_ctx_valid() then
+    pcall(function() r.ImGui_EndChild(ctx) end)
+  end
 end
 
 local function draw_collapsed_filter_controls()
+  if not is_imgui_ctx_valid() then return end
   local flags = window_flag_noresize() | window_flag_noscroll_with_mouse()
   if r.ImGui_WindowFlags_HorizontalScrollbar then
     flags = flags | r.ImGui_WindowFlags_HorizontalScrollbar()
   end
-  if not r.ImGui_BeginChild(ctx, "##search_collapsed_controls", 0, 28, 0, flags) then
-    return
-  end
+  local filter_controls_visible = false
+  local filter_child_begun = false
+  local ok_filter_begin = pcall(function()
+    filter_controls_visible = r.ImGui_BeginChild(ctx, "##search_collapsed_controls", 0, 28, 0, flags) == true
+    filter_child_begun = true
+  end)
+  if ok_filter_begin and filter_controls_visible then
 
   local has_any = false
   if state.favorites_only_filter then
@@ -4572,20 +4643,26 @@ local function draw_collapsed_filter_controls()
   else
     r.ImGui_Text(ctx, "Filters: (none)")
   end
-  r.ImGui_EndChild(ctx)
+  end
+
+  if filter_child_begun and is_imgui_ctx_valid() then
+    pcall(function() r.ImGui_EndChild(ctx) end)
+  end
 end
 
 draw_panel_heading_row = function(collapsed_key, title)
+  if not is_imgui_ctx_valid() then return end
   local collapsed = state.ui[collapsed_key] == true
-  local icon = collapsed and "▶" or "▼"
+  local icon = collapsed and "?" or "?"
   if draw_text_only_button(icon .. "##tog_" .. collapsed_key, 18, 18) then
     state.ui[collapsed_key] = not collapsed
   end
-  r.ImGui_SameLine(ctx, 0, 8)
-  r.ImGui_Text(ctx, title)
+  pcall(function() r.ImGui_SameLine(ctx, 0, 8) end)
+  pcall(function() r.ImGui_Text(ctx, title) end)
 end
 
 local function draw_scan_progress_window()
+  if not is_imgui_ctx_valid() then return end
   local runner = state and state.manage and state.manage.scan_runner or nil
   local gfr = state and state.manage and state.manage.galaxy_full_refresh or nil
   local has_scan = runner and (not runner.done)
@@ -4599,8 +4676,13 @@ local function draw_scan_progress_window()
     pcall(function() r.ImGui_SetNextWindowSize(ctx, 420, 0, cond) end)
   end
   local win_flags = window_flag_noresize()
-  local visible2, open2 = r.ImGui_Begin(ctx, "Scan Progress", true, win_flags)
-  if visible2 then
+  local visible2, open2 = false, true
+  local begin2_ok, begin2_visible_ret, begin2_open_ret = pcall(r.ImGui_Begin, ctx, "Scan Progress", true, win_flags)
+  local begin2_has_window = begin2_ok and begin2_visible_ret ~= nil  if begin2_ok then
+    visible2 = begin2_visible_ret == true
+    open2 = begin2_open_ret ~= false
+  end
+  if begin2_has_window and visible2 then
     if has_scan then
       local label = tostring(state.manage.scan_progress_label or "Scanning...")
       r.ImGui_TextWrapped(ctx, label)
@@ -4652,13 +4734,17 @@ local function draw_scan_progress_window()
       end
     end
   end
-  r.ImGui_End(ctx)
+  if begin2_has_window and is_imgui_ctx_valid() then
+    local ok_end2, err_end2 = pcall(function() r.ImGui_End(ctx) end)
+    if not ok_end2 then    end
+  end
   if open2 == false then
     state.manage.scan_progress_window_open = false
   end
 end
 
 function M._draw_sample_edit_popup_window()
+  if not is_imgui_ctx_valid() then return end
   if not state or not state.runtime or state.runtime.edit_popup_open ~= true then return end
   local ids = {}
   do
@@ -4717,8 +4803,13 @@ function M._draw_sample_edit_popup_window()
     pcall(function() r.ImGui_SetNextWindowSize(ctx, 420, 560, cond) end)
   end
 
-  local visible, open = r.ImGui_Begin(ctx, "Sample Edit", true, window_flag_noresize())
-  if visible then
+  local visible, open = false, true
+  local begin_ok, begin_ret_visible, begin_ret_open = pcall(r.ImGui_Begin, ctx, "Sample Edit", true, window_flag_noresize())
+  local begin_has_window = begin_ok and begin_ret_visible ~= nil  if begin_ok then
+    visible = begin_ret_visible == true
+    open = begin_ret_open ~= false
+  end
+  if begin_has_window and visible then
     if #ids == 1 then
       r.ImGui_TextWrapped(ctx, tostring(row.filename or ("sample #" .. tostring(sid))))
       if row.pack_name and tostring(row.pack_name) ~= "" then
@@ -4790,12 +4881,12 @@ function M._draw_sample_edit_popup_window()
     end
     r.ImGui_SameLine(ctx, 0, 6)
     local major_on = (mode == "major")
-    if r.ImGui_Button(ctx, (major_on and "● Major" or "○ Major") .. "##popup_edit_key_mode_major", 88, 20) then
+    if r.ImGui_Button(ctx, (major_on and "?EMajor" or "?EMajor") .. "##popup_edit_key_mode_major", 88, 20) then
       state.runtime.edit_popup_key_mode = major_on and "none" or "major"
     end
     r.ImGui_SameLine(ctx, 0, 6)
     local minor_on = (mode == "minor")
-    if r.ImGui_Button(ctx, (minor_on and "● Minor" or "○ Minor") .. "##popup_edit_key_mode_minor", 88, 20) then
+    if r.ImGui_Button(ctx, (minor_on and "?EMinor" or "?EMinor") .. "##popup_edit_key_mode_minor", 88, 20) then
       state.runtime.edit_popup_key_mode = minor_on and "none" or "minor"
     end
     local key_text = build_edit_key_text(state.runtime.edit_popup_key_root, state.runtime.edit_popup_key_mode) or ""
@@ -4930,7 +5021,10 @@ function M._draw_sample_edit_popup_window()
       if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Clear type override failed: " .. tostring(ret_msg or "unknown")) end
     end
   end
-  r.ImGui_End(ctx)
+  if begin_has_window and is_imgui_ctx_valid() then
+    local ok_end_edit, err_end_edit = pcall(function() r.ImGui_End(ctx) end)
+    if not ok_end_edit then    end
+  end
   if open == false then
     state.runtime.edit_popup_open = false
     state.runtime.edit_popup_ids = nil
@@ -4938,6 +5032,7 @@ function M._draw_sample_edit_popup_window()
 end
 
 function M._draw_pack_bulk_tag_window()
+  if not is_imgui_ctx_valid() then return end
   if not state or not state.runtime or state.runtime.pack_bulk_tag_open ~= true then return end
   local pid = tonumber(state.runtime.pack_bulk_tag_pack_id)
   if not pid or pid < 1 then
@@ -4951,8 +5046,13 @@ function M._draw_pack_bulk_tag_window()
     pcall(function() r.ImGui_SetNextWindowSize(ctx, 420, 240, cond) end)
   end
   local title = "Tag pack samples"
-  local visible, open = r.ImGui_Begin(ctx, title, true, window_flag_noresize())
-  if visible then
+  local visible, open = false, true
+  local begin_ok, begin_ret_visible, begin_ret_open = pcall(r.ImGui_Begin, ctx, title, true, window_flag_noresize())
+  local begin_has_window = begin_ok and begin_ret_visible ~= nil  if begin_ok then
+    visible = begin_ret_visible == true
+    open = begin_ret_open ~= false
+  end
+  if begin_has_window and visible then
     local pack_name = tostring(state.runtime.pack_bulk_tag_pack_name or ("pack #" .. tostring(pid)))
     r.ImGui_TextWrapped(ctx, pack_name)
     r.ImGui_Separator(ctx)
@@ -5026,9 +5126,142 @@ function M._draw_pack_bulk_tag_window()
     end
     if pushed_disabled and r.ImGui_EndDisabled then pcall(function() r.ImGui_EndDisabled(ctx) end) end
   end
-  r.ImGui_End(ctx)
+  if begin_has_window and is_imgui_ctx_valid() then
+    local ok_end_bulk, err_end_bulk = pcall(function() r.ImGui_End(ctx) end)
+    if not ok_end_bulk then    end
+  end
   if open == false then
     state.runtime.pack_bulk_tag_open = false
+  end
+end
+
+local function rebind_ui_modules_for_ctx()
+  if not (state and ctx) then return end
+  if ui_search and type(ui_search.setup) == "function" then
+    ui_search.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      safe_push_font = safe_push_font,
+      safe_pop_font = safe_pop_font,
+      calc_text_w = calc_text_w,
+      should_accept_toggle_click = should_accept_toggle_click,
+      parse_optional_number = tag_ops.parse_optional_number,
+      ui_input_text_with_hint = ui_input_text_with_hint,
+      window_flag_noresize = window_flag_noresize,
+      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
+      filter_tags_has = tag_ops.filter_tags_has,
+      filter_tags_clear_all = tag_ops.filter_tags_clear_all,
+      filter_tags_remove_at = tag_ops.filter_tags_remove_at,
+      filter_tags_remove_value = tag_ops.filter_tags_remove_value,
+      filter_tags_add_unique = tag_ops.filter_tags_add_unique,
+      filter_tags_exclude_has = tag_ops.filter_tags_exclude_has,
+      filter_tags_exclude_remove_at = tag_ops.filter_tags_exclude_remove_at,
+      filter_tags_exclude_remove_value = tag_ops.filter_tags_exclude_remove_value,
+      filter_tags_exclude_add_unique = tag_ops.filter_tags_exclude_add_unique,
+      draw_text_only_button = draw_text_only_button,
+      content_width = content_width,
+      tag_chip_label_short = tag_chip_label_short,
+      draw_wrapped_tag_chips = draw_wrapped_tag_chips,
+      calc_text_w_fallback = 42,
+      tag_chip_min_w = TAG_CHIP_MIN_W,
+      tag_chip_max_w_filter = TAG_CHIP_MAX_W_FILTER,
+      font_small = font_small,
+      get_project_bpm = get_project_bpm,
+      search_ui = C.SEARCH_UI,
+    })
+  end
+  if ui_pack and type(ui_pack.setup) == "function" then
+    ui_pack.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      cover_art = cover_art,
+      scan_controller = scan_controller,
+      font_small = font_small,
+      active_pack_strip_h = C.ACTIVE_PACK_STRIP_H,
+      active_pack_chip_pad_y = C.ACTIVE_PACK_CHIP_PAD_Y,
+      active_pack_scrollbar_size = C.ACTIVE_PACK_SCROLLBAR_SIZE,
+      pack_list_row_min_h = C.PACK_LIST_ROW_MIN_H,
+      pack_list_thumb = C.PACK_LIST_THUMB,
+      content_width = content_width,
+      safe_push_font = safe_push_font,
+      safe_pop_font = safe_pop_font,
+      window_flag_noresize = window_flag_noresize,
+      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
+      window_flag_always_vertical_scrollbar = window_flag_always_vertical_scrollbar,
+      ui_input_text_with_hint = ui_input_text_with_hint,
+      draw_rows_virtualized = draw_rows_virtualized,
+      filter_pack_ids_has = filter_pack_ids_has,
+      filter_pack_ids_toggle = filter_pack_ids_toggle,
+      filter_pack_ids_clear = filter_pack_ids_clear,
+      filter_pack_ids_remove_at = filter_pack_ids_remove_at,
+      pack_display_name_by_id = pack_display_name_by_id,
+      reload_pack_lists = reload_pack_lists,
+      set_runtime_notice = set_runtime_notice,
+      sanitize_root_path_input = sanitize_root_path_input,
+      set_persisted_splice_db_path = set_persisted_splice_db_path,
+      set_persisted_splice_relink_roots = set_persisted_splice_relink_roots,
+      pack_ui = C.PACK_UI,
+      use_native_tabs = supports_native_tab_colors(),
+    })
+  end
+  if ui_samples_list and type(ui_samples_list.setup) == "function" then
+    ui_samples_list.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      cover_art = cover_art,
+      sample_section_min_h = C.SAMPLE_SECTION_MIN_H,
+      sample_list_row_min_h = C.SAMPLE_LIST_ROW_MIN_H,
+      sample_list_thumb = C.SAMPLE_LIST_THUMB,
+      font_main = font_main,
+      window_flag_noresize = window_flag_noresize,
+      window_flag_noscrollbar = window_flag_noscrollbar,
+      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
+      safe_push_font = safe_push_font,
+      safe_pop_font = safe_pop_font,
+      draw_text_only_button = draw_text_only_button,
+      draw_rows_virtualized = draw_rows_virtualized,
+      imgui_mod_down = imgui_mod_down,
+      bulk_clear_all_selection = bulk_clear_all_selection,
+      bulk_set_row_selected = bulk_set_row_selected,
+      bulk_toggle_sample_id = bulk_toggle_sample_id,
+      bulk_selected_count = bulk_selected_count,
+      bulk_selected_ids_list = bulk_selected_ids_list,
+      set_selected_row = set_selected_row,
+      stop_preview = stop_preview,
+      set_runtime_notice = set_runtime_notice,
+      play_selected_sample_preview = play_selected_sample_preview,
+      begin_drag_for_row = begin_drag_for_row,
+      open_sample_edit_popup_for_row = M._open_sample_edit_popup_for_row,
+      open_sample_edit_popup_for_ids = M._open_sample_edit_popup_for_ids,
+      list_ui = C.LIST_UI,
+    })
+  end
+  if ui_samples_galaxy and type(ui_samples_galaxy.setup) == "function" then
+    ui_samples_galaxy.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      scan_controller = scan_controller,
+      galaxy_ops = galaxy_ops,
+      sample_section_min_h = C.SAMPLE_SECTION_MIN_H,
+      galaxy_pick_radius_px = GALAXY_PICK_RADIUS_PX,
+      window_flag_noresize = window_flag_noresize,
+      window_flag_noscrollbar = window_flag_noscrollbar,
+      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
+      content_width = content_width,
+      set_runtime_notice = set_runtime_notice,
+      bulk_clear_all_selection = bulk_clear_all_selection,
+      bulk_set_row_selected = bulk_set_row_selected,
+      set_selected_row = set_selected_row,
+      play_selected_sample_preview = play_selected_sample_preview,
+    })
   end
 end
 
@@ -5037,6 +5270,7 @@ local function loop()
     ctx = nil
     state.runtime.ctx_recreate_requested = false
     state.runtime.main_window_size_seeded = false
+    state.runtime.ui_ctx_binding_sig = nil
   end
   if not ensure_reaimgui_ctx() then return end
   if r.GetExtState then
@@ -5049,6 +5283,13 @@ local function loop()
     local now = (r.time_precise and r.time_precise()) or os.time()
     r.SetExtState(XS.section, XS.running, instance_id, false)
     r.SetExtState(XS.section, XS.heartbeat, tostring(now), false)
+  end
+  if state and state.runtime and ctx then
+    local sig = tostring(ctx)
+    if state.runtime.ui_ctx_binding_sig ~= sig then
+      rebind_ui_modules_for_ctx()
+      state.runtime.ui_ctx_binding_sig = sig
+    end
   end
 
   -- Window flags: no collapse keeps it stable for dock usage; resizing enabled (horizontal + vertical).
@@ -5177,10 +5418,43 @@ local function loop()
       end)
     end
   end
-  -- Existing ReaScripts typically use this 4-arg form.
-  local visible, open = r.ImGui_Begin(ctx, C.SCRIPT_TITLE, true, flags)
+  local function is_ctx_valid()
+    return is_imgui_ctx_valid()
+  end
+  local function safe_separator()
+    if not is_ctx_valid() then return end
+    pcall(function() r.ImGui_Separator(ctx) end)
+  end
+  local function safe_text(text)
+    if not is_ctx_valid() then return end
+    pcall(function() r.ImGui_Text(ctx, tostring(text or "")) end)
+  end
+  local function safe_end_window(begin_has_window, label)
+    if not begin_has_window then return true end
+    local ok_probe_window, probe_win_w, probe_win_h = pcall(function()
+      return r.ImGui_GetWindowSize(ctx)
+    end)
+    local ok_end, end_err = pcall(function() r.ImGui_End(ctx) end)
+    if not ok_end then
+      if state and state.runtime then
+        state.runtime.ctx_recreate_requested = true
+      end
+      set_runtime_notice(tostring(label or "Window") .. " End failed: " .. tostring(end_err or "unknown"))
+      return false
+    end
+    return true
+  end
 
-  if visible then
+  -- Existing ReaScripts typically use this 4-arg form.
+  local begin_ok, begin_visible_ret, begin_open_ret = pcall(r.ImGui_Begin, ctx, C.SCRIPT_TITLE, true, flags)
+  local begin_has_window = begin_ok
+  local visible = begin_has_window and begin_visible_ret == true
+  local open = true
+  if begin_ok then
+    open = begin_open_ret ~= false
+  end
+  if begin_has_window and visible then
+    local ok_main_draw, main_draw_err = pcall(function()
     state.runtime.perf_gate = state and state.runtime and state.runtime.perf_enabled == true
     if state.runtime.perf_gate then
       state.runtime.perf_scan_t0 = (r.time_precise and r.time_precise()) or os.clock()
@@ -5207,7 +5481,7 @@ local function loop()
 
     if C.DEBUG_MINIMAL_LAYOUT then
       r.ImGui_Text(ctx, "DEBUG_MINIMAL_LAYOUT")
-      r.ImGui_Separator(ctx)
+      safe_separator()
       r.ImGui_TextWrapped(ctx, "If blue resize line still appears now, cause is top-level host/docking behavior, not child/table layout.")
       if r.ImGui_Button(ctx, "Dummy Button", -1, 28) then end
     end
@@ -5230,61 +5504,100 @@ local function loop()
 
     draw_panel_heading_row("pack_panel_collapsed", "Packs")
     if not state.ui.pack_panel_collapsed then
-      if r.ImGui_BeginChild(ctx, "##pack_section", 0, pack_h, 1, window_flag_noresize()) then
-        local pushed = safe_push_font(font_main, 14)
-        if state.runtime.perf_gate then
-          state.runtime.perf_pack_t0 = (r.time_precise and r.time_precise()) or os.clock()
-        end
-        draw_pack_section(win_w)
-        if state.runtime.perf_gate then
-          state.runtime.perf_acc.draw_pack = (tonumber(state.runtime.perf_acc.draw_pack) or 0) + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_pack_t0) or 0))
-        end
-        safe_pop_font(pushed)
-        r.ImGui_EndChild(ctx)
-      end
-      r.ImGui_Separator(ctx)
+      local pack_child_begun = false
+      local pack_section_visible = false
+      local pack_pre_w, pack_pre_h = nil, nil
+      local pack_post_w, pack_post_h = nil, nil
+      pcall(function()
+        pack_pre_w, pack_pre_h = r.ImGui_GetWindowSize(ctx)
+      end)
+      local ok_pack_begin = pcall(function()
+        pack_section_visible = r.ImGui_BeginChild(ctx, "##pack_section", 0, pack_h, 1, window_flag_noresize()) == true
+        pack_child_begun = true
+      end)
+      pcall(function()
+        pack_post_w, pack_post_h = r.ImGui_GetWindowSize(ctx)
+      end)      if ok_pack_begin and pack_section_visible then
+        local ok_pack_draw, pack_draw_err = pcall(function()
+          if state.runtime.perf_gate then
+            state.runtime.perf_pack_t0 = (r.time_precise and r.time_precise()) or os.clock()
+          end
+          draw_pack_section(win_w)
+          if state.runtime.perf_gate then
+            state.runtime.perf_acc.draw_pack = (tonumber(state.runtime.perf_acc.draw_pack) or 0) + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_pack_t0) or 0))
+          end
+        end)
+        if not ok_pack_draw then
+          set_runtime_notice("Pack section draw failed: " .. tostring(pack_draw_err or "unknown"))
+        end      end
+      if pack_child_begun and is_ctx_valid() then
+        local ok_pack_end, err_pack_end = pcall(function() r.ImGui_EndChild(ctx) end)
+        local ok_pack_end_probe, pack_end_w, pack_end_h = pcall(function()
+          return r.ImGui_GetWindowSize(ctx)
+        end)        if not ok_pack_end then        end
+      elseif pack_child_begun then      end
+      safe_separator()
       local max_ph = math.floor(win_h * 0.62)
       pack_h = draw_panel_splitter_resolve(win_w, "pack", pack_h, 72, max_ph)
       state.ui.panel_pack_h_px = pack_h
     else
       draw_collapsed_pack_controls()
-      r.ImGui_Separator(ctx)
+      safe_separator()
     end
 
     draw_panel_heading_row("search_panel_collapsed", "Search & filters")
     if not state.ui.search_panel_collapsed then
-      if r.ImGui_BeginChild(ctx, "##search_section", 0, search_h, 1, r.ImGui_WindowFlags_NoScrollbar() | window_flag_noresize()) then
+      local search_child_begun = false
+      local search_section_visible = false
+      local ok_search_begin = false
+      local search_pre_w, search_pre_h = nil, nil
+      local search_post_w, search_post_h = nil, nil
+      if is_ctx_valid() then
+        pcall(function()
+          search_pre_w, search_pre_h = r.ImGui_GetWindowSize(ctx)
+        end)
+        ok_search_begin = pcall(function()
+          search_section_visible = r.ImGui_BeginChild(ctx, "##search_section", 0, search_h, 1, r.ImGui_WindowFlags_NoScrollbar() | window_flag_noresize()) == true
+          search_child_begun = true
+        end)
+        pcall(function()
+          search_post_w, search_post_h = r.ImGui_GetWindowSize(ctx)
+        end)
+      end      if ok_search_begin and search_section_visible then
         if state.runtime.perf_gate then
           state.runtime.perf_search_t0 = (r.time_precise and r.time_precise()) or os.clock()
         end
         draw_search_section(win_w)
         if state.runtime.perf_gate then
           state.runtime.perf_acc.draw_search = (tonumber(state.runtime.perf_acc.draw_search) or 0) + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_search_t0) or 0))
-        end
-        r.ImGui_EndChild(ctx)
-      end
-      r.ImGui_Separator(ctx)
+        end      end
+      if search_child_begun and search_section_visible and is_ctx_valid() then
+        local ok_search_end, err_search_end = pcall(function() r.ImGui_EndChild(ctx) end)
+        if not ok_search_end then        end
+      elseif search_child_begun and not search_section_visible then      elseif search_child_begun then      end
+      safe_separator()
       local max_sh = math.min(math.floor(win_h * 0.62), C.SEARCH_PANEL_MAX_H_PX)
       search_h = draw_panel_splitter_resolve(win_w, "search", search_h, 64, max_sh)
       state.ui.panel_search_h_px = search_h
     else
-      draw_collapsed_filter_controls()
-      r.ImGui_Separator(ctx)
+      draw_collapsed_filter_controls()      safe_separator()
     end
 
-    r.ImGui_Text(ctx, "Samples & preview")
-    r.ImGui_Separator(ctx)
+    safe_text("Samples & preview")
+    safe_separator()
 
     local rest_h = win_h
     local cy = nil
-    pcall(function()
-      if r.ImGui_GetCursorPos then
-        local x, y = r.ImGui_GetCursorPos(ctx)
-        cy = tonumber(y)
-      elseif r.ImGui_GetCursorPosY then
-        cy = tonumber(r.ImGui_GetCursorPosY(ctx))
-      end
-    end)
+    if is_ctx_valid() then
+      pcall(function()
+        if r.ImGui_GetCursorPos then
+          local x, y = r.ImGui_GetCursorPos(ctx)
+          cy = tonumber(y)
+        elseif r.ImGui_GetCursorPosY then
+          cy = tonumber(r.ImGui_GetCursorPosY(ctx))
+        end
+      end)
+    end
     if type(cy) == "number" and cy > 0 then
       rest_h = math.max(140, math.floor(win_h - cy - 10))
     else
@@ -5326,8 +5639,10 @@ local function loop()
     reload_samples_if_needed()
     prewarm_galaxy_points_cache_step()
 
-    draw_samples_section(win_w, list_h)
-    r.ImGui_Separator(ctx)
+    local ok_samples_draw, samples_draw_err = pcall(draw_samples_section, win_w, list_h)
+    if not ok_samples_draw then
+      set_runtime_notice("Samples section draw failed: " .. tostring(samples_draw_err or "unknown"))
+    end    safe_separator()
     local max_list_h = math.max(min_list_h, math.floor(rest_h - min_detail_h - splitter_h))
     list_h = draw_panel_splitter_resolve(win_w, "listdetail", list_h, min_list_h, max_list_h)
     state.ui.panel_list_h_px = list_h
@@ -5336,8 +5651,10 @@ local function loop()
     if state.runtime.perf_gate then
       state.runtime.perf_detail_t0 = (r.time_precise and r.time_precise()) or os.clock()
     end
-    draw_detail_section(win_w, detail_h)
-    if state.runtime.perf_gate then
+    local ok_detail_draw, detail_draw_err = pcall(draw_detail_section, win_w, detail_h)
+    if not ok_detail_draw then
+      set_runtime_notice("Detail section draw failed: " .. tostring(detail_draw_err or "unknown"))
+    end    if state.runtime.perf_gate then
       state.runtime.perf_acc.draw_detail = (tonumber(state.runtime.perf_acc.draw_detail) or 0) + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_detail_t0) or 0))
       state.runtime.perf_acc.frames = (tonumber(state.runtime.perf_acc.frames) or 0) + 1
       state.runtime.perf_now = (r.time_precise and r.time_precise()) or os.clock()
@@ -5360,7 +5677,7 @@ local function loop()
       end
     end
     handle_waveform_mouse()
-    -- D&D風挿入は、行ホバー検出後に評価するため末尾で更新する
+    -- D&D???????E??E??E???????????????
     handle_drag_drop_insert()
     tick_galaxy_full_refresh()
 
@@ -5373,41 +5690,68 @@ local function loop()
       end
     end
     if state.runtime.perf_gate and state.runtime.perf_last_report ~= "" then
-      r.ImGui_Separator(ctx)
-      r.ImGui_Text(ctx, state.runtime.perf_last_report)
+      safe_separator()
+      safe_text(state.runtime.perf_last_report)
     end
 
     end -- not DEBUG_MINIMAL_LAYOUT (full layout)
-    if state and state.runtime and r.ImGui_GetWindowDockID then
+    if state and state.runtime and r.ImGui_GetWindowDockID and is_ctx_valid() then
       local ok_snap, sid = pcall(function()
         return r.ImGui_GetWindowDockID(ctx)
       end)
       if ok_snap then
-        state.runtime.main_window_dock_id_for_persist = tonumber(sid) or 0
+        local dock_id_now = tonumber(sid) or 0
+        state.runtime.main_window_dock_id_prev_frame = dock_id_now
+        state.runtime.main_window_dock_id_for_persist = dock_id_now
+      end
+    end
+    end)
+    if not ok_main_draw then      set_runtime_notice("Main window draw failed: " .. tostring(main_draw_err or "unknown"))
+      if state and state.runtime then
+        state.runtime.ctx_recreate_requested = true
       end
     end
   end
-  r.ImGui_End(ctx)
-  if style_push_n > 0 then
-    pcall(function() r.ImGui_PopStyleVar(ctx, style_push_n) end)
+  if not is_ctx_valid() then    if state and state.runtime then
+      state.runtime.ctx_recreate_requested = true
+    end
+    if r.defer then
+      r.defer(loop)
+    end
+    return
+  end
+  safe_end_window(begin_has_window and visible, "Main window")  if style_push_n > 0 then
+    local ok_pop_var, err_pop_var = pcall(function() r.ImGui_PopStyleVar(ctx, style_push_n) end)
+    if not ok_pop_var then    end
   end
   if color_push_n > 0 then
-    pcall(function() r.ImGui_PopStyleColor(ctx, color_push_n) end)
+    local ok_pop_col, err_pop_col = pcall(function() r.ImGui_PopStyleColor(ctx, color_push_n) end)
+    if not ok_pop_col then    end
   end
 
-  if visible and C.DEBUG_MINIMAL_LAYOUT then
-    if open and not r.ImGui_IsKeyPressed(ctx, r.ImGui_Key_Escape()) then
+  local esc_pressed = false
+  if is_ctx_valid() then
+    local ok_esc, esc = pcall(function()
+      return r.ImGui_IsKeyPressed(ctx, r.ImGui_Key_Escape())
+    end)
+    esc_pressed = ok_esc and esc == true
+  end
+
+  if begin_has_window and visible and C.DEBUG_MINIMAL_LAYOUT then
+    if open and not esc_pressed then
       r.defer(loop)
     end
     return
   end
 
-  draw_scan_progress_window()
-  M._draw_sample_edit_popup_window()
-  M._draw_pack_bulk_tag_window()
+  if is_ctx_valid() then
+    draw_scan_progress_window()
+    M._draw_sample_edit_popup_window()
+    M._draw_pack_bulk_tag_window()
+  end
 
   persist_ui_state((r.time_precise and r.time_precise()) or os.time())
-  if open and not r.ImGui_IsKeyPressed(ctx, r.ImGui_Key_Escape()) then
+  if open and not esc_pressed and is_ctx_valid() then
     r.defer(loop)
   end
 end

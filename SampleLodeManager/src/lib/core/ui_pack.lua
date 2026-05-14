@@ -65,6 +65,43 @@ local function ensure_fn(fn, fallback)
   return function() end
 end
 
+local function is_imgui_ctx_valid()
+  if not (r and ctx) then return false end
+  if not r.ImGui_ValidatePtr then return true end
+  local ok_v, valid = pcall(function()
+    return r.ImGui_ValidatePtr(ctx, "ImGui_Context*")
+  end)
+  return ok_v and valid == true
+end
+
+local function run_with_font_scope(font, size_px, draw_fn)
+  if not is_imgui_ctx_valid() then return false, "invalid imgui ctx" end
+  local pushed = safe_push_font(font, size_px)
+  local ok, err = pcall(draw_fn)
+  safe_pop_font(pushed)
+  return ok, err
+end
+
+local function begin_child_safe(id, w, h, border, flags)
+  if not is_imgui_ctx_valid() then
+    return false, false
+  end
+  local ok_begin, visible = pcall(function()
+    return r.ImGui_BeginChild(ctx, id, w, h, border, flags)
+  end)
+  if not ok_begin then
+    return false, false
+  end
+  return true, visible == true
+end
+
+local function end_child_safe(begin_called)
+  if not begin_called then return end
+  pcall(function()
+    r.ImGui_EndChild(ctx)
+  end)
+end
+
 local function draw_favorite_icon_button(id, is_on, w, h)
   w = tonumber(w) or 24
   h = tonumber(h) or 20
@@ -178,17 +215,20 @@ end
 
 function M.draw(win_w)
   if not (r and ctx and state) then return end
-
+  if not is_imgui_ctx_valid() then return end
   do
     local cw = content_width(win_w)
     r.ImGui_SetCursorPosX(ctx, math.max(0, cw - 126))
-    local pushed_g = safe_push_font(font_small, 11)
-    if r.ImGui_Button(ctx, "Manage Sources##pack_gear", pack_ui.manage_btn_w, pack_ui.manage_btn_h) then
-      if r.ImGui_OpenPopup then
-        r.ImGui_OpenPopup(ctx, "Manage Sources##manage_sources_modal")
+    local ok_manage, err_manage = run_with_font_scope(font_small, 11, function()
+      if r.ImGui_Button(ctx, "Manage Sources##pack_gear", pack_ui.manage_btn_w, pack_ui.manage_btn_h) then
+        if r.ImGui_OpenPopup then
+          r.ImGui_OpenPopup(ctx, "Manage Sources##manage_sources_modal")
+        end
       end
+    end)
+    if not ok_manage then
+      set_runtime_notice("Manage Sources button draw failed: " .. tostring(err_manage or "unknown"))
     end
-    safe_pop_font(pushed_g)
   end
   r.ImGui_Text(ctx, "Active packs:")
   r.ImGui_SameLine(ctx, 0, pack_ui.active_strip_gap_x)
@@ -199,63 +239,52 @@ function M.draw(win_w)
     if r.ImGui_WindowFlags_HorizontalScrollbar then
       child_flags = child_flags | r.ImGui_WindowFlags_HorizontalScrollbar()
     end
-    local pushed_scrollbar_size = false
-    if r.ImGui_PushStyleVar and r.ImGui_StyleVar_ScrollbarSize then
-      local ok_sv = pcall(function()
-        r.ImGui_PushStyleVar(ctx, r.ImGui_StyleVar_ScrollbarSize(), ACTIVE_PACK_SCROLLBAR_SIZE)
-      end)
-      pushed_scrollbar_size = ok_sv == true
-    end
-    if r.ImGui_BeginChild(ctx, "##pack_active_strip", 0, strip_h, 0, child_flags) then
-      local to_rm_pack = nil
-      local pushed_chip_pad = false
-      if r.ImGui_PushStyleVar and r.ImGui_StyleVar_FramePadding then
-        local ok_pad = pcall(function()
-          r.ImGui_PushStyleVar(ctx, r.ImGui_StyleVar_FramePadding(), 5, ACTIVE_PACK_CHIP_PAD_Y)
-        end)
-        pushed_chip_pad = ok_pad == true
-      end
-      if #state.filter_pack_ids == 0 then
-        r.ImGui_Text(ctx, "all (click rows to narrow)")
-      else
-        for i, pid in ipairs(state.filter_pack_ids) do
-          if i > 1 then
-            r.ImGui_SameLine(ctx, 0, pack_ui.active_chip_gap_x)
+    local child_begun, active_strip_visible = begin_child_safe("##pack_active_strip", 0, strip_h, 0, child_flags)    local ok_strip, strip_err = pcall(function()
+      if active_strip_visible then
+        local to_rm_pack = nil
+        if #state.filter_pack_ids == 0 then
+          r.ImGui_Text(ctx, "all (click rows to narrow)")
+        else
+          for i, pid in ipairs(state.filter_pack_ids) do
+            if i > 1 then
+              r.ImGui_SameLine(ctx, 0, pack_ui.active_chip_gap_x)
+            end
+            r.ImGui_PushID(ctx, "ap_" .. tostring(i))
+            local nm = tostring(pack_display_name_by_id(pid) or ("#" .. tostring(pid)))
+            if #nm > 26 then
+              nm = nm:sub(1, 26) .. "..."
+            end
+            if r.ImGui_SmallButton(ctx, "x " .. nm .. "##rmpk") then
+              to_rm_pack = i
+            end
+            r.ImGui_PopID(ctx)
           end
-          r.ImGui_PushID(ctx, "ap_" .. tostring(i))
-          local nm = tostring(pack_display_name_by_id(pid) or ("#" .. tostring(pid)))
-          if #nm > 26 then
-            nm = nm:sub(1, 26) .. "..."
+          r.ImGui_SameLine(ctx, 0, pack_ui.active_clear_gap_x)
+          if r.ImGui_SmallButton(ctx, "Clear all##pack_filter_clear_all") then
+            filter_pack_ids_clear()
+            to_rm_pack = nil
           end
-          if r.ImGui_SmallButton(ctx, "x " .. nm .. "##rmpk") then
-            to_rm_pack = i
-          end
-          r.ImGui_PopID(ctx)
         end
-        r.ImGui_SameLine(ctx, 0, pack_ui.active_clear_gap_x)
-        if r.ImGui_SmallButton(ctx, "Clear all##pack_filter_clear_all") then
-          filter_pack_ids_clear()
-          to_rm_pack = nil
+        if to_rm_pack then
+          filter_pack_ids_remove_at(to_rm_pack)
         end
       end
-      if pushed_chip_pad and r.ImGui_PopStyleVar then
-        pcall(function() r.ImGui_PopStyleVar(ctx, 1) end)
-      end
-      if to_rm_pack then
-        filter_pack_ids_remove_at(to_rm_pack)
-      end
-      r.ImGui_EndChild(ctx)
+    end)
+    end_child_safe(child_begun and active_strip_visible)    if not ok_strip then
+      set_runtime_notice("Active pack strip draw failed: " .. tostring(strip_err or "unknown"))
     end
-    if pushed_scrollbar_size and r.ImGui_PopStyleVar then
-      pcall(function() r.ImGui_PopStyleVar(ctx, 1) end)
-    end
-  end
+  end  if not is_imgui_ctx_valid() then return end
 
-  r.ImGui_PushItemWidth(ctx, -1)
+  local pushed_item_width = false
+  pcall(function()
+    r.ImGui_PushItemWidth(ctx, -1)
+    pushed_item_width = true
+  end)
   local changed, new_text = ui_input_text_with_hint("##pack_query", "Search packs or developer...", state.packs_query, 256)
   if changed then state.packs_query = new_text end
-  r.ImGui_PopItemWidth(ctx)
-
+  if pushed_item_width then
+    pcall(function() r.ImGui_PopItemWidth(ctx) end)
+  end
   do
     local pushed_checkbox_size = false
     if r.ImGui_PushStyleVar and r.ImGui_StyleVar_FramePadding then
@@ -264,7 +293,15 @@ function M.draw(win_w)
       end)
       pushed_checkbox_size = ok_pad == true
     end
-    local chg, on = r.ImGui_Checkbox(ctx, "Favorite packs only", state.ui.pack_favorites_only_filter == true)
+    local chg, on = false, state.ui.pack_favorites_only_filter == true
+    do
+      local ok_chk, chg_ret, on_ret = pcall(function()
+        return r.ImGui_Checkbox(ctx, "Favorite packs only", state.ui.pack_favorites_only_filter == true)
+      end)
+      if ok_chk and type(chg_ret) == "boolean" then
+        chg, on = chg_ret, on_ret
+      end
+    end
     if pushed_checkbox_size and r.ImGui_PopStyleVar then
       pcall(function() r.ImGui_PopStyleVar(ctx, 1) end)
     end
@@ -330,7 +367,11 @@ function M.draw(win_w)
   local function pack_sort_button(key, label, width)
     local on = (sort_mode == key)
     local w = width or 0
-    if r.ImGui_Button(ctx, (on and "* " or "") .. label .. "##pack_sort_" .. key, w, pack_ui.sort_btn_h) then
+    local clicked = false
+    pcall(function()
+      clicked = r.ImGui_Button(ctx, (on and "* " or "") .. label .. "##pack_sort_" .. key, w, pack_ui.sort_btn_h) == true
+    end)
+    if clicked then
       if state.ui.pack_sort ~= key then
         state.ui.pack_sort = key
         reload_pack_lists()
@@ -567,7 +608,10 @@ function M.draw(win_w)
           push_n = push_n + 1
         end)
       end
-      local clicked = r.ImGui_Button(ctx, label .. id, w, h) == true
+      local clicked = false
+      pcall(function()
+        clicked = r.ImGui_Button(ctx, label .. id, w, h) == true
+      end)
       local rect = nil
       do
         local ok_r1, x1, y1 = pcall(r.ImGui_GetItemRectMin, ctx)
@@ -620,13 +664,16 @@ function M.draw(win_w)
         end
       end
     end
+    local ok_tab_draw, tab_draw_err
     if sel == "splice" then
-      draw_pack_table_body(state.packs.splice, "splice")
+      ok_tab_draw, tab_draw_err = pcall(draw_pack_table_body, state.packs.splice, "splice")
     else
-      draw_pack_table_body(state.packs.other, "other")
+      ok_tab_draw, tab_draw_err = pcall(draw_pack_table_body, state.packs.other, "other")
+    end
+    if not ok_tab_draw then
+      set_runtime_notice("Pack list UI error: " .. tostring(tab_draw_err or "unknown"))
     end
   end
-
   local ok_sep = pcall(function()
     r.ImGui_Separator(ctx)
   end)
@@ -636,10 +683,7 @@ function M.draw(win_w)
     end
     return
   end
-
-  if manage_sources_ui and type(manage_sources_ui.draw_modal) == "function" then
-    manage_sources_ui.draw_modal()
-  end
+  if manage_sources_ui and type(manage_sources_ui.draw_modal) == "function" then    manage_sources_ui.draw_modal()  end
 end
 
 return M
