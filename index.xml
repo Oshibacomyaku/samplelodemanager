@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Sample Lode Manager" commit="93a7b3fba91a8287f262f89af7b9ed4918c7913f">
+<index version="1" name="Sample Lode Manager" commit="622944bf48e626f87d47b85c5fcbf13b81736ed4">
   <category name="SampleLodeManager">
     <reapack name="oshibacomyaku_Sample Lode Manager.lua" type="script" desc="Sample Lode Manager">
       <metadata>
@@ -38,6 +38,11 @@
         <source platform="darwin64" file="bin/darwin64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/93a7b3fba91a8287f262f89af7b9ed4918c7913f/SampleLodeManager/bin/darwin64/lsqlite3complete.so</source>
         <source platform="darwin-arm64" file="bin/darwin-arm64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/93a7b3fba91a8287f262f89af7b9ed4918c7913f/SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so</source>
       </version>
+      <version name="0.2.9" author="oshibacomyaku" time="2026-06-21T15:41:47Z">
+        <changelog><![CDATA[0.2.9: SQLite 起動診断・cpath 強化・配布モジュール追加（resource_paths 等）。0.2.8: src/python・licenses に @noindex（reapack-index --check 対象）。waveform.lua は @noindex を先頭に。0.2.7: @provides 明示一覧。0.2.6: src .lua @noindex。0.2.5: ImGui/ドック。0.2.4: index 列挙。]]></changelog>
+        <source main="main">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/oshibacomyaku_Sample%20Lode%20Manager.lua</source>
+        <source platform="darwin-arm64" file="bin/darwin-arm64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so</source>
+      </version>
     </reapack>
   </category>
   <metadata>
@@ -47,6 +52,10 @@
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Sample Lode Manager\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 Sample browser and manager for REAPER.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 {\b Product overview (architecture, current state, where to edit):}\line {\field{\*\fldinst{HYPERLINK "SampleLodeManager/docs/PROJECT_OVERVIEW_ja.md"}}{\fldrslt{\ul
+SampleLodeManager/docs/PROJECT_OVERVIEW_ja.md
+}}}
+ (Japanese)\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Requirements (not bundled)\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaPack\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab ReaImGui\par}
