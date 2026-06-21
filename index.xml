@@ -41,6 +41,32 @@
       <version name="0.2.9" author="oshibacomyaku" time="2026-06-21T15:41:47Z">
         <changelog><![CDATA[0.2.9: SQLite 起動診断・cpath 強化・配布モジュール追加（resource_paths 等）。0.2.8: src/python・licenses に @noindex（reapack-index --check 対象）。waveform.lua は @noindex を先頭に。0.2.7: @provides 明示一覧。0.2.6: src .lua @noindex。0.2.5: ImGui/ドック。0.2.4: index 列挙。]]></changelog>
         <source main="main">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/oshibacomyaku_Sample%20Lode%20Manager.lua</source>
+        <source file="src/lib/cover_art.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/cover_art.lua</source>
+        <source file="src/lib/core/app.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/app.lua</source>
+        <source file="src/lib/core/scan_controller.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/scan_controller.lua</source>
+        <source file="src/lib/core/ui_pack.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_pack.lua</source>
+        <source file="src/lib/core/ui_pack_manage_sources.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_pack_manage_sources.lua</source>
+        <source file="src/lib/core/ui_samples_galaxy.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_samples_galaxy.lua</source>
+        <source file="src/lib/core/ui_samples_list.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_samples_list.lua</source>
+        <source file="src/lib/core/ui_search.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_search.lua</source>
+        <source file="src/lib/core/resource_paths.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/resource_paths.lua</source>
+        <source file="src/lib/core/ui_imgui_utils.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_imgui_utils.lua</source>
+        <source file="src/lib/core/ext_state.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ext_state.lua</source>
+        <source file="src/lib/core/key_bpm_utils.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/key_bpm_utils.lua</source>
+        <source file="src/lib/core/ui_theme.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_theme.lua</source>
+        <source file="src/lib/db/db_manager.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/db/db_manager.lua</source>
+        <source file="src/lib/db/sqlite_store.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/db/sqlite_store.lua</source>
+        <source file="src/lib/waveform.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/waveform.lua</source>
+        <source file="src/python/auto_alias_suggest.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/python/auto_alias_suggest.py</source>
+        <source file="src/python/phase_a_filename_nlp.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/python/phase_a_filename_nlp.py</source>
+        <source file="src/python/phase_b2_audio_hints.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/python/phase_b2_audio_hints.py</source>
+        <source file="src/python/phase_c_rerank.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/python/phase_c_rerank.py</source>
+        <source file="src/python/phase_d_audio_features.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/python/phase_d_audio_features.py</source>
+        <source file="src/python/phase_e_embed_umap.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/python/phase_e_embed_umap.py</source>
+        <source file="licenses/lsqlite3complete_LICENSE.txt">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/licenses/lsqlite3complete_LICENSE.txt</source>
+        <source file="licenses/sqlite_PUBLIC_DOMAIN.txt">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/licenses/sqlite_PUBLIC_DOMAIN.txt</source>
+        <source platform="win64" file="bin/win64/lsqlite3complete.dll">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/bin/win64/lsqlite3complete.dll</source>
+        <source platform="darwin64" file="bin/darwin64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/bin/darwin64/lsqlite3complete.so</source>
         <source platform="darwin-arm64" file="bin/darwin-arm64/lsqlite3complete.so">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/bin/darwin-arm64/lsqlite3complete.so</source>
       </version>
     </reapack>
