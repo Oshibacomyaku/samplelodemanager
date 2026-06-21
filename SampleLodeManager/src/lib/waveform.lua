@@ -8,6 +8,12 @@ local M = {}
 
 local sep = package.config:sub(1, 1)
 
+local resource_paths = nil
+do
+  local ok, mod = pcall(require, "lib.core.resource_paths")
+  if ok then resource_paths = mod end
+end
+
 local DEFAULT_NUM_PEAKS = 384
 local MAX_CACHE_ENTRIES = 36
 
@@ -116,8 +122,9 @@ local function copy_file_binary(src_path, dst_path)
 end
 
 local function copy_to_ascii_temp_path(src_path)
-  local base = (r.GetResourcePath() or "") .. sep .. "SampleLodeManager_wave_tmp"
-  if base == sep .. "SampleLodeManager_wave_tmp" then return nil end
+  local base = (resource_paths and resource_paths.get_waveform_temp_base(r))
+    or ((r.GetResourcePath() or "") .. sep .. "SampleLodeManager_wave_tmp")
+  if not base or base == "" then return nil end
   ensure_dir(base)
   local stamp = tostring(r.time_precise and r.time_precise() or os.time())
   local rnd = tostring(math.random(100000, 999999))

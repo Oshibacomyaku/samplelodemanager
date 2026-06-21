@@ -11,6 +11,12 @@ local galaxy_ops = nil
 local SAMPLE_SECTION_MIN_H = 40
 local GALAXY_PICK_RADIUS_PX = 11
 
+local imgui_utils = nil
+do
+  local ok, mod = pcall(require, "lib.core.ui_imgui_utils")
+  if ok and type(mod) == "table" then imgui_utils = mod end
+end
+
 local window_flag_noresize = nil
 local window_flag_noscrollbar = nil
 local window_flag_noscroll_with_mouse = nil
@@ -64,15 +70,9 @@ function M.draw(win_w, list_h)
   if not is_imgui_ctx_valid() then return end
   list_h = math.max(SAMPLE_SECTION_MIN_H, math.floor(tonumber(list_h) or 120))
   local galaxy_child_flags = window_flag_noresize() | window_flag_noscrollbar() | window_flag_noscroll_with_mouse()
-  local galaxy_child_visible = false
-  local galaxy_child_begun = false
-  local ok_begin = pcall(function()
-    local ret = r.ImGui_BeginChild(ctx, "##sample_galaxy", 0, list_h, 1, galaxy_child_flags)
-    galaxy_child_begun = true
-    galaxy_child_visible = ret == true
-  end)
-  if ok_begin and galaxy_child_visible then
-    local ok_draw, _draw_err = pcall(function()
+  if imgui_utils then
+    imgui_utils.with_child(ctx, r, "##sample_galaxy", 0, list_h, 1, galaxy_child_flags, function()
+      local ok_draw, _draw_err = pcall(function()
     local zoom = tonumber(state.ui.galaxy_zoom) or 1.0
     zoom = math.max(1.0, math.min(8.0, zoom))
     state.ui.galaxy_zoom = zoom
@@ -95,6 +95,9 @@ function M.draw(win_w, list_h)
             set_runtime_notice("Database not ready.")
           else
             state.manage.galaxy_full_refresh = { stage = "scanning", cancel_requested = false }
+            set_runtime_notice(
+              "Update Galaxy: library scan started. After the scan, repair/rebuild may freeze REAPER briefly (see progress window)."
+            )
             if scan_controller and type(scan_controller.begin_async_rescan_all) == "function" then
               scan_controller.begin_async_rescan_all()
             end
@@ -494,13 +497,11 @@ function M.draw(win_w, list_h)
       "Galaxy view: oneshot %d / plotted %d / no_embed %d / feat rows %d / embedded %d / visible %d / dots %d%s",
       oneshot_total, #points, no_embed_n, audio_feature_rows, embed_rows, visible, visible_bins, status
     ))
+      end)
+      if not ok_draw and state and state.runtime then
+        state.runtime.ctx_recreate_requested = true
+      end
     end)
-    if not ok_draw and state and state.runtime then
-      state.runtime.ctx_recreate_requested = true
-    end
-  end
-  if galaxy_child_begun then
-    pcall(function() r.ImGui_EndChild(ctx) end)
   end
 end
 

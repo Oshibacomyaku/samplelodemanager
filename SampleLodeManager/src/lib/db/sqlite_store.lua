@@ -3,6 +3,12 @@ local r = reaper
 
 local M = {}
 
+local resource_paths = nil
+do
+  local ok, mod = pcall(require, "lib.core.resource_paths")
+  if ok then resource_paths = mod end
+end
+
 local sep = package.config:sub(1, 1)
 -- Safety default: Phase C audio rerank is expensive when called per-sample.
 -- Keep disabled unless reworked to true batch/incremental processing.
@@ -35,6 +41,20 @@ local PHASE_E_LAST_INFO = {
 local GALAXY_EMBED_PROFILE_VARIANTS = {
   { key = "balanced", umap_neighbors = 48, umap_min_dist = 0.30 },
 }
+
+local function work_paths(stem)
+  if resource_paths then
+    return resource_paths.work_pair(r, stem)
+  end
+  local base = r.GetResourcePath() .. sep .. "SampleLodeManager_" .. stem
+  return { in_path = base .. "_in.tsv", out_path = base .. "_out.tsv" }
+end
+
+local function cleanup_work_files(paths)
+  if resource_paths then
+    resource_paths.remove_paths(paths)
+  end
+end
 
 local function sql_quote(str)
   if str == nil then return "NULL" end
@@ -785,10 +805,12 @@ local function run_python_auto_alias_batch(unknown_tokens, splice_vocab)
   if not sf then return out end
   sf:close()
 
-  local base = r.GetResourcePath() .. sep .. "SampleLodeManager_auto_alias"
-  local in_path = base .. "_unknown.tsv"
-  local vocab_path = base .. "_vocab.tsv"
-  local out_path = base .. "_out.tsv"
+  local in_path = (resource_paths and resource_paths.work_file(r, "auto_alias", "_unknown.tsv"))
+    or (r.GetResourcePath() .. sep .. "SampleLodeManager_auto_alias_unknown.tsv")
+  local vocab_path = (resource_paths and resource_paths.work_file(r, "auto_alias", "_vocab.tsv"))
+    or (r.GetResourcePath() .. sep .. "SampleLodeManager_auto_alias_vocab.tsv")
+  local out_path = (resource_paths and resource_paths.work_file(r, "auto_alias", "_out.tsv"))
+    or (r.GetResourcePath() .. sep .. "SampleLodeManager_auto_alias_out.tsv")
 
   local f1 = io.open(in_path, "wb")
   if not f1 then return out end
@@ -808,10 +830,16 @@ local function run_python_auto_alias_batch(unknown_tokens, splice_vocab)
   local ok_exec, _ = pcall(function()
     return r.ExecProcess(cmd, 10000)
   end)
-  if not ok_exec then return out end
+  if not ok_exec then
+    cleanup_work_files({ in_path, vocab_path, out_path })
+    return out
+  end
 
   local rf = io.open(out_path, "rb")
-  if not rf then return out end
+  if not rf then
+    cleanup_work_files({ in_path, vocab_path, out_path })
+    return out
+  end
   for line in rf:lines() do
     local alias, canon, conf = line:match("^([^\t]+)\t([^\t]+)\t([%d%.]+)$")
     local c = tonumber(conf or "")
@@ -820,6 +848,7 @@ local function run_python_auto_alias_batch(unknown_tokens, splice_vocab)
     end
   end
   rf:close()
+  cleanup_work_files({ in_path, vocab_path, out_path })
   return out
 end
 
@@ -881,9 +910,9 @@ local function run_python_phase_a_batch(rows, pack_name)
   if not sf then return out end
   sf:close()
 
-  local base = r.GetResourcePath() .. sep .. "SampleLodeManager_phase_a"
-  local in_path = base .. "_in.tsv"
-  local out_path = base .. "_out.tsv"
+  local pair = work_paths("phase_a")
+  local in_path = pair.in_path
+  local out_path = pair.out_path
   local f = io.open(in_path, "wb")
   if not f then return out end
   for i, row in ipairs(rows) do
@@ -898,10 +927,16 @@ local function run_python_phase_a_batch(rows, pack_name)
   local ok_exec, _ = pcall(function()
     return r.ExecProcess(cmd, 8000)
   end)
-  if not ok_exec then return out end
+  if not ok_exec then
+    cleanup_work_files({ in_path, out_path })
+    return out
+  end
 
   local rf = io.open(out_path, "rb")
-  if not rf then return out end
+  if not rf then
+    cleanup_work_files({ in_path, out_path })
+    return out
+  end
   for line in rf:lines() do
     local idx_text, tags_csv = line:match("^(%d+)\t(.*)$")
     local idx = tonumber(idx_text or "")
@@ -910,6 +945,7 @@ local function run_python_phase_a_batch(rows, pack_name)
     end
   end
   rf:close()
+  cleanup_work_files({ in_path, out_path })
   return out
 end
 
@@ -924,9 +960,9 @@ local function run_python_phase_b2_batch(rows, pack_name)
   if not sf then return out end
   sf:close()
 
-  local base = r.GetResourcePath() .. sep .. "SampleLodeManager_phase_b2"
-  local in_path = base .. "_in.tsv"
-  local out_path = base .. "_out.tsv"
+  local pair = work_paths("phase_b2")
+  local in_path = pair.in_path
+  local out_path = pair.out_path
   local f = io.open(in_path, "wb")
   if not f then return out end
   for i, row in ipairs(rows) do
@@ -941,10 +977,16 @@ local function run_python_phase_b2_batch(rows, pack_name)
   local ok_exec, _ = pcall(function()
     return r.ExecProcess(cmd, 10000)
   end)
-  if not ok_exec then return out end
+  if not ok_exec then
+    cleanup_work_files({ in_path, out_path })
+    return out
+  end
 
   local rf = io.open(out_path, "rb")
-  if not rf then return out end
+  if not rf then
+    cleanup_work_files({ in_path, out_path })
+    return out
+  end
   for line in rf:lines() do
     local idx_text, tags_csv = line:match("^(%d+)\t(.*)$")
     local idx = tonumber(idx_text or "")
@@ -953,6 +995,7 @@ local function run_python_phase_b2_batch(rows, pack_name)
     end
   end
   rf:close()
+  cleanup_work_files({ in_path, out_path })
   return out
 end
 
@@ -967,9 +1010,9 @@ local function run_python_phase_d_batch(rows, pack_name)
   if not sf then return out end
   sf:close()
 
-  local base = r.GetResourcePath() .. sep .. "SampleLodeManager_phase_d"
-  local in_path = base .. "_in.tsv"
-  local out_path = base .. "_out.tsv"
+  local pair = work_paths("phase_d")
+  local in_path = pair.in_path
+  local out_path = pair.out_path
   local f = io.open(in_path, "wb")
   if not f then return out end
   local wrote = 0
@@ -1001,10 +1044,16 @@ local function run_python_phase_d_batch(rows, pack_name)
     -- Spectral feature extraction over large libraries can take several minutes.
     return r.ExecProcess(cmd, 900000)
   end)
-  if not ok_exec then return out end
+  if not ok_exec then
+    cleanup_work_files({ in_path, out_path })
+    return out
+  end
 
   local rf = io.open(out_path, "rb")
-  if not rf then return out end
+  if not rf then
+    cleanup_work_files({ in_path, out_path })
+    return out
+  end
   for line in rf:lines() do
     local clean = tostring(line or ""):gsub("\r$", "")
     local idx_t, b_t, n_t, a_t, d_t, t_t, c_t, r_t, bw_t, fl_t, mf_t, inh_t, met_t =
@@ -1045,6 +1094,7 @@ local function run_python_phase_d_batch(rows, pack_name)
     end
   end
   rf:close()
+  cleanup_work_files({ in_path, out_path })
   return out
 end
 
@@ -1122,10 +1172,11 @@ local function run_python_phase_e_batch(phase_d_by_index, pe_opts)
   if not sf then return out end
   sf:close()
 
-  local base = r.GetResourcePath() .. sep .. "SampleLodeManager_phase_e"
-  local in_path = base .. "_in.tsv"
-  local out_path = base .. "_out.tsv"
-  local meta_path = base .. "_meta.txt"
+  local pair = work_paths("phase_e")
+  local in_path = pair.in_path
+  local out_path = pair.out_path
+  local meta_path = (resource_paths and resource_paths.work_file(r, "phase_e", "_meta.txt"))
+    or (r.GetResourcePath() .. sep .. "SampleLodeManager_phase_e_meta.txt")
   local f = io.open(in_path, "wb")
   if not f then return out end
   local dropped_low_valid = 0
@@ -1204,7 +1255,10 @@ local function run_python_phase_e_batch(phase_d_by_index, pe_opts)
     -- UMAP import/JIT can also be slow on large inputs.
     return r.ExecProcess(cmd, 600000)
   end)
-  if not ok_exec then return out end
+  if not ok_exec then
+    cleanup_work_files({ in_path, out_path, meta_path })
+    return out
+  end
 
   PHASE_E_LAST_INFO = {
     mode = "unknown",
@@ -1241,6 +1295,7 @@ local function run_python_phase_e_batch(phase_d_by_index, pe_opts)
     end
   end
   rf:close()
+  cleanup_work_files({ in_path, out_path, meta_path })
   return out
 end
 
@@ -1257,9 +1312,10 @@ local function run_python_phase_c_single(file_path, candidate_tags)
   if not sf then return out end
   sf:close()
 
-  local base = r.GetResourcePath() .. sep .. "SampleLodeManager_phase_c"
-  local tags_path = base .. "_tags.tsv"
-  local out_path = base .. "_out.tsv"
+  local tags_path = (resource_paths and resource_paths.work_file(r, "phase_c", "_tags.tsv"))
+    or (r.GetResourcePath() .. sep .. "SampleLodeManager_phase_c_tags.tsv")
+  local out_path = (resource_paths and resource_paths.work_file(r, "phase_c", "_out.tsv"))
+    or (r.GetResourcePath() .. sep .. "SampleLodeManager_phase_c_out.tsv")
   local f = io.open(tags_path, "wb")
   if not f then return out end
   for _, tg in ipairs(candidate_tags) do
@@ -1278,10 +1334,16 @@ local function run_python_phase_c_single(file_path, candidate_tags)
   local ok_exec, _ = pcall(function()
     return r.ExecProcess(cmd, 12000)
   end)
-  if not ok_exec then return out end
+  if not ok_exec then
+    cleanup_work_files({ tags_path, out_path })
+    return out
+  end
 
   local rf = io.open(out_path, "rb")
-  if not rf then return out end
+  if not rf then
+    cleanup_work_files({ tags_path, out_path })
+    return out
+  end
   for line in rf:lines() do
     local tag, score = line:match("^([^\t]+)\t([%d%.%-]+)$")
     local sc = tonumber(score or "")
@@ -1290,6 +1352,7 @@ local function run_python_phase_c_single(file_path, candidate_tags)
     end
   end
   rf:close()
+  cleanup_work_files({ tags_path, out_path })
   return out
 end
 

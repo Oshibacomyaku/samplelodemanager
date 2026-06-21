@@ -1,7 +1,7 @@
 -- @description Sample Lode Manager
--- @version 0.2.8
+-- @version 0.2.9
 -- @author oshibacomyaku
--- @changelog 0.2.8: src/python・licenses に @noindex（reapack-index --check 対象）。waveform.lua は @noindex を先頭に。0.2.7: @provides 明示一覧。0.2.6: src .lua @noindex。0.2.5: ImGui/ドック。0.2.4: index 列挙。
+-- @changelog 0.2.9: SQLite 起動診断・cpath 強化・配布モジュール追加（resource_paths 等）。0.2.8: src/python・licenses に @noindex（reapack-index --check 対象）。waveform.lua は @noindex を先頭に。0.2.7: @provides 明示一覧。0.2.6: src .lua @noindex。0.2.5: ImGui/ドック。0.2.4: index 列挙。
 -- @about Sample browser and manager for REAPER. Requires ReaImGui (REAPER 7+ / Lua 5.4). Optional Python workers are bundled. Bundled SQLite bindings (lsqlite3complete): MIT — see licenses/lsqlite3complete_LICENSE.txt. SQLite engine: public domain — see licenses/sqlite_PUBLIC_DOMAIN.txt. Layout: bin/README.md.
 -- @provides [main] oshibacomyaku_Sample Lode Manager.lua
 -- @provides [nomain] src/lib/cover_art.lua

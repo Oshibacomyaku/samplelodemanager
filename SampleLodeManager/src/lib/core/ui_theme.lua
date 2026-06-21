@@ -23,6 +23,7 @@ function M.default_constants()
     DETAIL_TAGS_STRIP_H = 32,
     DETAIL_PANEL_MIN_H = 244,
     SAMPLE_SECTION_MIN_H = 40,
+    COLLAPSED_PANEL_ROW_H = 20,
     SAMPLE_LIST_ROW_MIN_H = 26,
     SAMPLE_LIST_THUMB = 34,
     FONT_MAIN_NAME = "Segoe UI Bold",

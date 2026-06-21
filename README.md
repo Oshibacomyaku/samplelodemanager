@@ -2,6 +2,9 @@
 
 Sample browser and manager for REAPER.
 
+**Product overview (architecture, current state, where to edit):**  
+[SampleLodeManager/docs/PROJECT_OVERVIEW_ja.md](SampleLodeManager/docs/PROJECT_OVERVIEW_ja.md) (Japanese)
+
 ## Requirements (not bundled)
 
 - ReaPack

@@ -34,6 +34,12 @@ local font_small = nil
 local get_project_bpm = nil
 local search_ui = nil
 
+local imgui_utils = nil
+do
+  local ok, mod = pcall(require, "lib.core.ui_imgui_utils")
+  if ok and type(mod) == "table" then imgui_utils = mod end
+end
+
 local BPM_FILTER_MIN = 20
 local BPM_FILTER_MAX = 400
 local BPM_AUTO_WINDOW_MIN = 1
@@ -893,8 +899,9 @@ function M.draw(win_w)
       r.ImGui_PushItemWidth(ctx, -1)
       pushed_tag_input_w = true
     end)
+    local tag_inp_id = "##tag_filter_input_" .. tostring((state.runtime and state.runtime.tag_filter_input_reset_id) or 0)
     local changed_inp, new_inp = ui_input_text_with_hint(
-      "##tag_filter_input",
+      tag_inp_id,
       "Search filename/tags... (Enter adds first suggestion)",
       state.tag_filter_input,
       256
@@ -926,15 +933,22 @@ function M.draw(win_w)
     if show_suggestions and state.store.available and state.store.conn and sqlite_store and type(sqlite_store.get_tag_filter_suggestions) == "function" then
       state.runtime.tag_sugg_cache_key_next = string.format("q:%s|f:%s|fx:%s|l:%d", inp_trim, filter_sig, filter_sig_ex, 40)
       state.runtime.tag_sugg_cache_use = false
-      if state.runtime.tag_sugg_cache_key == state.runtime.tag_sugg_cache_key_next then
-        state.runtime.tag_sugg_cache_age = ((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.tag_sugg_cache_at) or 0)
-        if state.runtime.tag_sugg_cache_age >= 0 and state.runtime.tag_sugg_cache_age <= 0.18 then
+      local now_clock = (r.time_precise and r.time_precise()) or os.clock()
+      local debounce_sec = 0.14
+      if state.runtime.tag_sugg_debounce_key ~= state.runtime.tag_sugg_cache_key_next then
+        state.runtime.tag_sugg_debounce_key = state.runtime.tag_sugg_cache_key_next
+        state.runtime.tag_sugg_debounce_until = now_clock + debounce_sec
+      end
+      local debounce_ok = now_clock >= (tonumber(state.runtime.tag_sugg_debounce_until) or 0)
+      if debounce_ok and state.runtime.tag_sugg_cache_key == state.runtime.tag_sugg_cache_key_next then
+        state.runtime.tag_sugg_cache_age = now_clock - (tonumber(state.runtime.tag_sugg_cache_at) or 0)
+        if state.runtime.tag_sugg_cache_age >= 0 and state.runtime.tag_sugg_cache_age <= 0.32 then
           state.runtime.tag_sugg_cache_use = true
         end
       end
-      if state.runtime.tag_sugg_cache_use and type(state.runtime.tag_sugg_cache_rows) == "table" then
+      if debounce_ok and state.runtime.tag_sugg_cache_use and type(state.runtime.tag_sugg_cache_rows) == "table" then
         sugg = state.runtime.tag_sugg_cache_rows
-      else
+      elseif debounce_ok then
         pcall(function()
           local raw = sqlite_store.get_tag_filter_suggestions(
             { db = state.store.conn },
@@ -961,33 +975,25 @@ function M.draw(win_w)
           search_ui.tag_suggestions_max_h,
           search_ui.tag_suggestions_base_h + search_ui.tag_suggestions_row_h * math.min(#sugg, search_ui.tag_suggestions_visible_rows)
         )
-        local suggestions_begun = false
-        local suggestions_visible = false
-        pcall(function()
-          local ret = r.ImGui_BeginChild(ctx, "##tag_suggestions", 0, sugg_h, 1, 0)
-          suggestions_begun = true
-          suggestions_visible = ret == true
-        end)
-        if suggestions_visible then
-          for i, row in ipairs(sugg) do
-            local tg = tostring(row.tag or "")
-            local cnt = tonumber(row.count) or 0
-            local line = tg .. " (" .. tostring(cnt) .. ")##sugg_" .. tostring(i)
-            local hi = (i == 1)
-            local picked = false
-            if r.ImGui_Selectable then
-              picked = r.ImGui_Selectable(ctx, line, hi)
-            elseif r.ImGui_Button then
-              picked = r.ImGui_Button(ctx, line, -1, 20)
+        if imgui_utils then
+          imgui_utils.with_child(ctx, r, "##tag_suggestions", 0, sugg_h, 1, 0, function()
+            for i, row in ipairs(sugg) do
+              local tg = tostring(row.tag or "")
+              local cnt = tonumber(row.count) or 0
+              local line = tg .. " (" .. tostring(cnt) .. ")##sugg_" .. tostring(i)
+              local hi = (i == 1)
+              local picked = false
+              if r.ImGui_Selectable then
+                picked = r.ImGui_Selectable(ctx, line, hi)
+              elseif r.ImGui_Button then
+                picked = r.ImGui_Button(ctx, line, -1, 20)
+              end
+              if picked then
+                filter_tags_add_unique(tg)
+                state.tag_filter_input = ""
+              end
             end
-            if picked then
-              filter_tags_add_unique(tg)
-              state.tag_filter_input = ""
-            end
-          end
-        end
-        if suggestions_begun then
-          pcall(function() r.ImGui_EndChild(ctx) end)
+          end)
         end
       end
 
@@ -1010,7 +1016,7 @@ function M.draw(win_w)
         state.runtime.tag_pop_cache_use = false
         if state.runtime.tag_pop_cache_key == state.runtime.tag_pop_cache_key_next then
           state.runtime.tag_pop_cache_age = ((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.tag_pop_cache_at) or 0)
-          if state.runtime.tag_pop_cache_age >= 0 and state.runtime.tag_pop_cache_age <= 0.22 then
+          if state.runtime.tag_pop_cache_age >= 0 and state.runtime.tag_pop_cache_age <= 0.35 then
             state.runtime.tag_pop_cache_use = true
           end
         end

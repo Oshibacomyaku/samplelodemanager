@@ -61,6 +61,7 @@ if C.DETAIL_TAGS_STRIP_H == nil then C.DETAIL_TAGS_STRIP_H = 32 end
 if C.DETAIL_PANEL_MIN_H == nil then C.DETAIL_PANEL_MIN_H = 210 end
 if C.SAMPLE_SECTION_MIN_H == nil then C.SAMPLE_SECTION_MIN_H = 40 end
 if C.SAMPLE_LIST_ROW_MIN_H == nil then C.SAMPLE_LIST_ROW_MIN_H = 26 end
+if C.COLLAPSED_PANEL_ROW_H == nil then C.COLLAPSED_PANEL_ROW_H = 20 end
 if C.SAMPLE_LIST_THUMB == nil then C.SAMPLE_LIST_THUMB = 34 end
 if C.FONT_MAIN_NAME == nil then C.FONT_MAIN_NAME = "Segoe UI Bold" end
 if C.FONT_SMALL_NAME == nil then C.FONT_SMALL_NAME = "Segoe UI Semibold" end
@@ -83,6 +84,12 @@ local sqlite_store = nil
 do
   local ok, mod = pcall(require, "lib.db.sqlite_store")
   if ok then sqlite_store = mod end
+end
+
+local resource_paths = nil
+do
+  local ok, mod = pcall(require, "lib.core.resource_paths")
+  if ok then resource_paths = mod end
 end
 
 local waveform = nil
@@ -125,6 +132,24 @@ local ui_samples_galaxy = nil
 do
   local ok, mod = pcall(require, "lib.core.ui_samples_galaxy")
   if ok then ui_samples_galaxy = mod end
+end
+
+local imgui_utils = nil
+do
+  local ok, mod = pcall(require, "lib.core.ui_imgui_utils")
+  if ok and type(mod) == "table" then imgui_utils = mod end
+end
+
+local ext_state = nil
+do
+  local ok, mod = pcall(require, "lib.core.ext_state")
+  if ok and type(mod) == "table" then ext_state = mod end
+end
+
+local key_bpm = nil
+do
+  local ok, mod = pcall(require, "lib.core.key_bpm_utils")
+  if ok and type(mod) == "table" then key_bpm = mod end
 end
 
 -- forward declarations (defined later)
@@ -408,7 +433,13 @@ local function draw_fading_text_line(id, text, width)
     end
   end
   local flags = window_flag_noresize() | window_flag_noscrollbar() | window_flag_noscroll_with_mouse()
-  local fade_child_visible = r.ImGui_BeginChild(ctx, "##fade_text_" .. tostring(id or "txt"), w, line_h + 2, 0, flags)  if fade_child_visible then
+  local fade_child_begun = false
+  local fade_child_visible = false
+  pcall(function()
+    fade_child_visible = r.ImGui_BeginChild(ctx, "##fade_text_" .. tostring(id or "txt"), w, line_h + 2, 0, flags) == true
+    fade_child_begun = true
+  end)
+  if fade_child_begun and fade_child_visible then
     r.ImGui_Text(ctx, tostring(text or ""))
     local dl = nil
     pcall(function()
@@ -434,9 +465,12 @@ local function draw_fading_text_line(id, text, width)
       end
     end
   end
-  local ok_fade_end, err_fade_end = pcall(function()
-    r.ImGui_EndChild(ctx)
-  end)end
+  if fade_child_begun and fade_child_visible and is_imgui_ctx_valid() then
+    pcall(function()
+      r.ImGui_EndChild(ctx)
+    end)
+  end
+end
 
 local PREVIEW_GAIN_DB_MIN = -60.0
 local PREVIEW_GAIN_DB_MAX = 6.0
@@ -569,65 +603,43 @@ local function safe_pop_font(pushed)
 end
 
 local function get_persisted_splice_db_path()
-  if not r.GetExtState then return "" end
-  local v = r.GetExtState(XS.section, XS.splice_db_path)
-  if not v or tostring(v) == "" then return "" end
-  return tostring(v)
+  if not ext_state then return "" end
+  return ext_state.get_persisted_splice_db_path(r, XS.section, XS.splice_db_path)
 end
 
 local function set_persisted_splice_db_path(path_text)
-  if not r.SetExtState then return end
-  local v = tostring(path_text or "")
-  r.SetExtState(XS.section, XS.splice_db_path, v, true)
+  if not ext_state then return end
+  ext_state.set_persisted_splice_db_path(r, XS.section, XS.splice_db_path, path_text)
 end
 
 local function get_extstate_text(key)
-  if not r.GetExtState then return "" end
-  local v = r.GetExtState(XS.section, key)
-  if not v then return "" end
-  return tostring(v)
+  if not ext_state then return "" end
+  return ext_state.get_extstate_text(r, XS.section, key)
 end
 
 local function set_extstate_text(key, value, persist)
-  if not r.SetExtState then return end
-  r.SetExtState(XS.section, key, tostring(value or ""), persist == true)
+  if not ext_state then return end
+  ext_state.set_extstate_text(r, XS.section, key, value, persist)
 end
 
 local function get_persisted_splice_relink_roots()
-  if not r.GetExtState then return {} end
-  local raw = tostring(r.GetExtState(XS.section, XS.splice_relink_roots) or "")
-  if raw == "" then return {} end
-  local out = {}
-  for line in string.gmatch(raw, "[^\r\n]+") do
-    line = tostring(line):gsub("^%s+", ""):gsub("%s+$", "")
-    if line ~= "" then out[#out + 1] = line end
-  end
-  return out
+  if not ext_state then return {} end
+  return ext_state.get_persisted_splice_relink_roots(r, XS.section, XS.splice_relink_roots)
 end
 
 local function set_persisted_splice_relink_roots(paths_tbl)
-  if not r.SetExtState then return end
-  local lines = {}
-  for _, p in ipairs(paths_tbl or {}) do
-    local s = tostring(p or ""):gsub("\r", ""):gsub("\n", "")
-    if s ~= "" then lines[#lines + 1] = s end
-  end
-  r.SetExtState(XS.section, XS.splice_relink_roots, table.concat(lines, "\n"), true)
+  if not ext_state then return end
+  ext_state.set_persisted_splice_relink_roots(r, XS.section, XS.splice_relink_roots, paths_tbl)
 end
 
 local function get_extstate_bool(key, default_value)
-  local raw = get_extstate_text(key)
-  if raw == "" then return default_value == true end
-  raw = raw:lower()
-  if raw == "1" or raw == "true" then return true end
-  if raw == "0" or raw == "false" then return false end
-  return default_value == true
+  if not ext_state then return default_value == true end
+  return ext_state.get_extstate_bool(r, XS.section, key, default_value)
 end
 
 local function get_extstate_number(key)
-  local raw = get_extstate_text(key)
-  if raw == "" then return nil end
-  return tonumber(raw)
+  if not ext_state then return nil end
+  return ext_state.get_extstate_number(r, XS.section, key)
 end
 
 local function should_accept_toggle_click(click_map, key, interval_sec)
@@ -640,7 +652,20 @@ local function should_accept_toggle_click(click_map, key, interval_sec)
   return true
 end
 
-local function reload_pack_lists()
+local function rebuild_pack_display_name_map()
+  local m = {}
+  for _, plist in ipairs({ state.packs.splice or {}, state.packs.other or {} }) do
+    for _, p in ipairs(plist) do
+      local id = tonumber(p.id)
+      if id then
+        m[id] = (p.display_name and p.display_name ~= "" and p.display_name) or p.name or ("#" .. tostring(id))
+      end
+    end
+  end
+  state.runtime.pack_display_name_by_id = m
+end
+
+local function reload_pack_lists_impl()
   if not state or not state.store or not state.store.available or not state.store.conn or not sqlite_store then
     return
   end
@@ -659,11 +684,32 @@ local function reload_pack_lists()
   if ok2 and type(other_or_err) == "table" then
     state.packs.other = other_or_err
   end
+  if (ok1 and type(splice_or_err) == "table") or (ok2 and type(other_or_err) == "table") then
+    rebuild_pack_display_name_map()
+  end
+end
+
+local function flush_reload_pack_lists_if_needed()
+  if not (state and state.runtime and state.runtime.pack_lists_reload_requested) then
+    return
+  end
+  state.runtime.pack_lists_reload_requested = false
+  reload_pack_lists_impl()
+end
+
+local function reload_pack_lists()
+  if not state or not state.runtime then return end
+  state.runtime.pack_lists_reload_requested = true
 end
 
 local function pack_display_name_by_id(pack_id)
   local want = tonumber(pack_id)
   if not want then return nil end
+  local by_id = state.runtime and state.runtime.pack_display_name_by_id
+  if type(by_id) == "table" then
+    local hit = by_id[want]
+    if hit then return hit end
+  end
   for _, p in ipairs(state.packs.splice or {}) do
     if tonumber(p.id) == want then
       return (p.display_name and p.display_name ~= "" and p.display_name) or p.name or ("#" .. tostring(want))
@@ -680,16 +726,35 @@ end
 local function filter_pack_ids_has(list, pack_id)
   local want = tonumber(pack_id)
   if not want or not list then return false end
+  if list == state.filter_pack_ids then
+    local set = state.runtime.filter_pack_id_set
+    if not set then
+      set = {}
+      for _, x in ipairs(list) do
+        local id = tonumber(x)
+        if id then set[id] = true end
+      end
+      state.runtime.filter_pack_id_set = set
+    end
+    return set[want] == true
+  end
   for _, x in ipairs(list) do
     if tonumber(x) == want then return true end
   end
   return false
 end
 
+local function filter_pack_ids_invalidate_membership_cache()
+  if state and state.runtime then
+    state.runtime.filter_pack_id_set = nil
+  end
+end
+
 local function filter_pack_ids_remove_at(idx)
   if not idx or idx < 1 or idx > #state.filter_pack_ids then return end
   table.remove(state.filter_pack_ids, idx)
   state.needs_reload_samples = true
+  filter_pack_ids_invalidate_membership_cache()
 end
 
 local function filter_pack_ids_toggle(pack_id)
@@ -699,17 +764,20 @@ local function filter_pack_ids_toggle(pack_id)
     if tonumber(state.filter_pack_ids[i]) == id then
       table.remove(state.filter_pack_ids, i)
       state.needs_reload_samples = true
+      filter_pack_ids_invalidate_membership_cache()
       return
     end
   end
   state.filter_pack_ids[#state.filter_pack_ids + 1] = id
   state.needs_reload_samples = true
+  filter_pack_ids_invalidate_membership_cache()
 end
 
 local function filter_pack_ids_clear()
   if #state.filter_pack_ids == 0 then return end
   state.filter_pack_ids = {}
   state.needs_reload_samples = true
+  filter_pack_ids_invalidate_membership_cache()
 end
 
 local function filter_pack_set_single(pack_id)
@@ -717,6 +785,7 @@ local function filter_pack_set_single(pack_id)
   if not id or id < 1 then return end
   state.filter_pack_ids = { id }
   state.needs_reload_samples = true
+  filter_pack_ids_invalidate_membership_cache()
 end
 
 local function init_state()
@@ -917,17 +986,39 @@ local function init_state()
       dock_restore_attempts = 0,
       main_window_dock_id_for_persist = nil,
       main_window_size_seeded = false,
-      perf_enabled = false,
+      perf_enabled = get_extstate_bool("ui_perf_overlay", false),
       perf_last_report_at = nil,
       perf_last_report = "",
-      perf_acc = { frames = 0, tick_scan = 0, draw_pack = 0, draw_search = 0, draw_detail = 0 },
+      perf_acc = {
+        frames = 0,
+        tick_scan = 0,
+        reload_samples = 0,
+        prewarm_galaxy = 0,
+        tick_gfr = 0,
+        draw_pack = 0,
+        draw_search = 0,
+        draw_detail = 0,
+      },
+      pack_lists_reload_requested = false,
+      pack_display_name_by_id = nil,
+      perf_ext_poll_at = 0,
+      heartbeat_write_last = nil,
       tag_sugg_cache_key = nil,
       tag_sugg_cache_rows = nil,
       tag_sugg_cache_at = nil,
       tag_pop_cache_key = nil,
       tag_pop_cache_rows = nil,
       tag_pop_cache_at = nil,
+      tag_sugg_debounce_key = nil,
+      tag_sugg_debounce_until = nil,
+      tag_filter_input_reset_id = 0,
       pack_filtered_cache = {},
+      filter_pack_id_set = nil,
+      samples_reload_debounce_sig = nil,
+      samples_reload_debounce_until = nil,
+      galaxy_low_budget_frames = 0,
+      row_idx_by_sample_id = nil,
+      path_exists_cache = nil,
       detail_cache_next_quick_retry_at = nil,
       detail_cache_next_full_retry_at = nil,
     },
@@ -972,8 +1063,8 @@ local function init_state()
 
   -- SQLite store open (if module is available)
   if state.db.available and state.db.backend == "sqlite" and sqlite_store and type(sqlite_store.open) == "function" then
-    -- Use REAPER resource path so it survives across runs without requiring write access to script dir.
-    local db_path = r.GetResourcePath() .. sep .. "SampleLodeManager.sqlite"
+    local db_path = (resource_paths and resource_paths.get_db_path(r))
+      or (r.GetResourcePath() .. sep .. "SampleLodeManager.sqlite")
     local db_module = (db_manager and db_manager.sqlite) or nil
     local db, err = sqlite_store.open(db_path, db_module)
     if db then
@@ -997,6 +1088,7 @@ local function init_state()
   -- Load packs from DB (if ready)
   if state.store.available then
     reload_pack_lists()
+    flush_reload_pack_lists_if_needed()
   end
 
   if scan_controller and type(scan_controller.setup) == "function" then
@@ -1106,6 +1198,21 @@ local function file_exists(path)
   if not f then return false end
   f:close()
   return true
+end
+
+local function file_exists_cached(path)
+  local p = tostring(path or "")
+  if p == "" then return false end
+  if not state.runtime.path_exists_cache then
+    state.runtime.path_exists_cache = {}
+  end
+  local c = state.runtime.path_exists_cache[p]
+  if c ~= nil then
+    return c == true
+  end
+  local ok = file_exists(p)
+  state.runtime.path_exists_cache[p] = ok
+  return ok
 end
 
 local function get_detail_waveform_play_ratio(row)
@@ -1598,12 +1705,30 @@ function M._build_sample_filter_signature()
     "fav_only=" .. tostring(state.ui.favorites_only_filter == true),
     "pack_fav_only=" .. tostring(state.ui.pack_favorites_only_filter == true),
   }
+  local ss = state.ui.sample_sort or {}
+  bits[#bits + 1] = "sort_col=" .. tostring(ss.column or "")
+  bits[#bits + 1] = "sort_asc=" .. tostring(ss.asc == true)
   return table.concat(bits, "|")
 end
 
 local function reload_samples_if_needed()
   if not state.needs_reload_samples then return end
+  local now = (r.time_precise and r.time_precise()) or os.clock()
   local current_sig = M._build_sample_filter_signature()
+  local debounce_sec = 0.16
+  if state.runtime.last_sample_filter_signature ~= nil then
+    if state.runtime.samples_reload_debounce_sig ~= current_sig then
+      state.runtime.samples_reload_debounce_sig = current_sig
+      state.runtime.samples_reload_debounce_until = now + debounce_sec
+      return
+    end
+    if now < (tonumber(state.runtime.samples_reload_debounce_until) or 0) then
+      return
+    end
+    state.runtime.samples_reload_debounce_sig = nil
+    state.runtime.samples_reload_debounce_until = nil
+  end
+
   local prev_sig = state.runtime.last_sample_filter_signature
   if prev_sig ~= nil and prev_sig ~= current_sig then
     bulk_clear_all_selection()
@@ -1647,15 +1772,19 @@ local function reload_samples_if_needed()
     end)
     if ok and samples_or_err then
       state.rows = samples_or_err
+      state.runtime.path_exists_cache = nil
       state.runtime.galaxy_points_cache = nil
+      state.runtime.row_idx_by_sample_id = nil
+      local id_map = {}
+      for i, rrow in ipairs(samples_or_err) do
+        local sid = tonumber(rrow and rrow.id)
+        if sid then id_map[sid] = i end
+      end
+      state.runtime.row_idx_by_sample_id = id_map
+      state.runtime.galaxy_low_budget_frames = 10
       local sel = nil
       if preserve_id then
-        for i, rrow in ipairs(samples_or_err) do
-          if tonumber(rrow.id) == preserve_id then
-            sel = i
-            break
-          end
-        end
+        sel = id_map[preserve_id]
       end
       state.selected_row = sel
       if sel and samples_or_err[sel] and samples_or_err[sel].id ~= nil then
@@ -1667,12 +1796,15 @@ local function reload_samples_if_needed()
       state.runtime.galaxy_points_cache = nil
     end
   end
+  state.runtime.samples_reload_debounce_sig = nil
+  state.runtime.samples_reload_debounce_until = nil
   state.needs_reload_samples = false
   resolve_pending_arrange_sample_selection()
 end
 
 local function prewarm_galaxy_points_cache_step()
   if not (state and state.runtime and state.rows) then return end
+  if state.ui and state.ui.sample_view_tab == "galaxy" then return end
   if #state.rows == 0 then return end
   if state.runtime.galaxy_points_cache then return end
   if galaxy_ops and type(galaxy_ops.get_cached_galaxy_points) == "function" then
@@ -1690,93 +1822,40 @@ local function pcm_source_length_sec(source)
 end
 
 local function parse_sample_bpm(value)
-  local bpm = tonumber(value)
-  if not bpm or bpm <= 0 then return nil end
-  if bpm < 20 or bpm > 400 then return nil end
-  return bpm
+  if not key_bpm then return nil end
+  return key_bpm.parse_sample_bpm(value)
 end
 
-local KEY_ROOT_OPTIONS = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }
-local KEY_SHARP_TO_FLAT = {
-  ["C#"] = "Db",
-  ["D#"] = "Eb",
-  ["F#"] = "Gb",
-  ["G#"] = "Ab",
-  ["A#"] = "Bb",
-}
+local KEY_ROOT_OPTIONS = (key_bpm and key_bpm.KEY_ROOT_OPTIONS) or {}
 
 local function normalize_key_root_text(root_raw)
-  local root = tostring(root_raw or ""):upper():gsub("^%s+", ""):gsub("%s+$", "")
-  local flat_to_sharp = {
-    DB = "C#", EB = "D#", GB = "F#", AB = "G#", BB = "A#",
-  }
-  if flat_to_sharp[root] then return flat_to_sharp[root] end
-  for _, k in ipairs(KEY_ROOT_OPTIONS) do
-    if root == k then return k end
-  end
-  return nil
+  if not key_bpm then return nil end
+  return key_bpm.normalize_key_root_text(root_raw)
 end
 
 local function key_root_dual_label(root_raw)
-  local sharp = normalize_key_root_text(root_raw)
-  if not sharp then return nil end
-  local flat = KEY_SHARP_TO_FLAT[sharp]
-  if flat then
-    return sharp .. " / " .. flat
-  end
-  return sharp
+  if not key_bpm then return nil end
+  return key_bpm.key_root_dual_label(root_raw)
 end
 
 local function format_key_text_dual(key_text, compact_mode)
-  local txt = tostring(key_text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-  if txt == "" then return "" end
-  local root_raw = txt:match("^([A-Ga-g][#bB]?)")
-  local root_dual = key_root_dual_label(root_raw)
-  if not root_dual then return txt end
-  local suffix = txt:sub(#tostring(root_raw) + 1):gsub("^%s+", "")
-  if compact_mode then
-    suffix = suffix:gsub("%f[%a][Mm][Aa][Jj][Oo][Rr]%f[%A]", "maj")
-    suffix = suffix:gsub("%f[%a][Mm][Ii][Nn][Oo][Rr]%f[%A]", "min")
-  end
-  if suffix ~= "" then
-    return root_dual .. " " .. suffix
-  end
-  return root_dual
+  if not key_bpm then return "" end
+  return key_bpm.format_key_text_dual(key_text, compact_mode)
 end
 
 local function parse_edit_key_parts(key_text)
-  local txt = tostring(key_text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-  if txt == "" then return nil, "none" end
-  local up = txt:upper()
-  local root = up:match("^([A-G][#B]?)")
-  root = normalize_key_root_text(root)
-  local low = txt:lower()
-  local mode = "none"
-  if low:find("minor", 1, true) or low:find(" min", 1, true) then
-    mode = "minor"
-  elseif low:find("major", 1, true) or low:find(" maj", 1, true) then
-    mode = "major"
-  end
-  return root, mode
+  if not key_bpm then return nil, "none" end
+  return key_bpm.parse_edit_key_parts(key_text)
 end
 
 local function build_edit_key_text(root, mode)
-  local rtxt = normalize_key_root_text(root)
-  if not rtxt then return nil end
-  if mode == "major" then return rtxt .. " major" end
-  if mode == "minor" then return rtxt .. " minor" end
-  return rtxt
+  if not key_bpm then return nil end
+  return key_bpm.build_edit_key_text(root, mode)
 end
 
 local function normalize_sample_type(value)
-  local t = tostring(value or ""):lower()
-  if t == "oneshot" or t == "one-shot" or t == "oneshots" then
-    return "oneshot"
-  end
-  if t == "loop" or t == "loops" then
-    return "loop"
-  end
-  return nil
+  if not key_bpm then return nil end
+  return key_bpm.normalize_sample_type(value)
 end
 
 local function get_project_bpm()
@@ -2841,6 +2920,11 @@ function tag_ops.filter_tags_add_unique(tag)
   if tag == "" or tag_ops.filter_tags_has(state.filter_tags, tag) then return end
   tag_ops.filter_tags_exclude_remove_value(tag)
   state.filter_tags[#state.filter_tags + 1] = tag
+  -- Clear free-text query so tag filter and filename search do not stack (ImGui input buffer reset via id bump).
+  state.tag_filter_input = ""
+  if state.runtime then
+    state.runtime.tag_filter_input_reset_id = (tonumber(state.runtime.tag_filter_input_reset_id) or 0) + 1
+  end
   state.needs_reload_samples = true
 end
 
@@ -3422,6 +3506,11 @@ function galaxy_ops.get_cached_galaxy_points(step_budget)
 
   local budget = tonumber(step_budget) or GALAXY_CACHE_STEP_UI
   if budget < 1 then budget = 1 end
+  local low_frames = tonumber(runtime.galaxy_low_budget_frames) or 0
+  if low_frames > 0 then
+    runtime.galaxy_low_budget_frames = low_frames - 1
+    budget = math.max(1, math.floor(budget * 0.25))
+  end
   local n_rows = #rows
   local processed = 0
   while build.next_idx <= n_rows and processed < budget do
@@ -3429,7 +3518,7 @@ function galaxy_ops.get_cached_galaxy_points(step_budget)
     local row = rows[idx]
     local t = row and row.type and tostring(row.type):lower() or ""
     if t == "oneshot" then
-      if file_exists(row and row.path) then
+      if file_exists_cached(row and row.path) then
         build.oneshot_total = build.oneshot_total + 1
         local has_audio =
           (tonumber(row and row.brightness) ~= nil)
@@ -4063,6 +4152,7 @@ local function draw_detail_section(win_w, detail_h)
       end
       r.ImGui_Separator(ctx)
       local tags = nil
+      -- Tags: one SQLite fetch per selected row (detail_cache_* reset when sample id/path changes above).
       if row and tonumber(row.id) and state.store.available and sqlite_store and type(sqlite_store.get_tags_for_sample) == "function" then
         if type(state.runtime.detail_cache_tags) ~= "table" then
           local ok_t, list = pcall(function() return sqlite_store.get_tags_for_sample({ db = state.store.conn }, tonumber(row.id)) end)
@@ -4506,54 +4596,34 @@ local function persist_ui_state(now_ts)
   end
 end
 
-local function draw_collapsed_pack_controls()
-  if not is_imgui_ctx_valid() then return end
-  local flags = window_flag_noresize() | window_flag_noscroll_with_mouse()
-  if r.ImGui_WindowFlags_HorizontalScrollbar then
-    flags = flags | r.ImGui_WindowFlags_HorizontalScrollbar()
-  end
-  local pack_controls_visible = false
-  local pack_child_begun = false
-  local ok_pack_begin = pcall(function()
-    pack_controls_visible = r.ImGui_BeginChild(ctx, "##pack_collapsed_controls", 0, 28, 0, flags) == true
-    pack_child_begun = true
-  end)  if ok_pack_begin and pack_controls_visible then
-    if #state.filter_pack_ids == 0 then
-      r.ImGui_Text(ctx, "Active packs: all")
+local function draw_pack_summary_inline()
+  if #state.filter_pack_ids == 0 then
+    if r.ImGui_PushStyleColor and r.ImGui_Col_Text and r.ImGui_Col_TextDisabled then
+      local ok = pcall(function()
+        r.ImGui_PushStyleColor(ctx, r.ImGui_Col_Text(), C.MODERN_UI.color_text_disabled or 0x45464DFF)
+      end)
+      r.ImGui_Text(ctx, "— all")
+      if ok and r.ImGui_PopStyleColor then pcall(function() r.ImGui_PopStyleColor(ctx, 1) end) end
     else
-      if r.ImGui_SmallButton(ctx, "Clear packs##collapsed_pack_clear") then
-        filter_pack_ids_clear()
-      end
-      for i, pid in ipairs(state.filter_pack_ids) do
-        r.ImGui_SameLine(ctx, 0, 4)
-        local nm = tostring(pack_display_name_by_id(pid) or ("#" .. tostring(pid)))
-        if #nm > 24 then nm = nm:sub(1, 24) .. "..." end
-        if r.ImGui_SmallButton(ctx, "x " .. nm .. "##collapsed_pack_rm_" .. tostring(i)) then
-          filter_pack_ids_remove_at(i)
-          break
-        end
+      r.ImGui_Text(ctx, "— all")
+    end
+  else
+    if r.ImGui_SmallButton(ctx, "Clear##collapsed_pack_clear") then
+      filter_pack_ids_clear()
+    end
+    for i, pid in ipairs(state.filter_pack_ids) do
+      r.ImGui_SameLine(ctx, 0, 4)
+      local nm = tostring(pack_display_name_by_id(pid) or ("#" .. tostring(pid)))
+      if #nm > 20 then nm = nm:sub(1, 20) .. "..." end
+      if r.ImGui_SmallButton(ctx, "x " .. nm .. "##collapsed_pack_rm_" .. tostring(i)) then
+        filter_pack_ids_remove_at(i)
+        break
       end
     end
   end
-  if pack_child_begun and is_imgui_ctx_valid() then
-    pcall(function() r.ImGui_EndChild(ctx) end)
-  end
 end
 
-local function draw_collapsed_filter_controls()
-  if not is_imgui_ctx_valid() then return end
-  local flags = window_flag_noresize() | window_flag_noscroll_with_mouse()
-  if r.ImGui_WindowFlags_HorizontalScrollbar then
-    flags = flags | r.ImGui_WindowFlags_HorizontalScrollbar()
-  end
-  local filter_controls_visible = false
-  local filter_child_begun = false
-  local ok_filter_begin = pcall(function()
-    filter_controls_visible = r.ImGui_BeginChild(ctx, "##search_collapsed_controls", 0, 28, 0, flags) == true
-    filter_child_begun = true
-  end)
-  if ok_filter_begin and filter_controls_visible then
-
+local function draw_filter_summary_inline()
   local has_any = false
   if state.favorites_only_filter then
     has_any = true
@@ -4607,7 +4677,7 @@ local function draw_collapsed_filter_controls()
       if has_any then r.ImGui_SameLine(ctx, 0, 4) end
       has_any = true
       local q_disp = q
-      if #q_disp > 24 then q_disp = q_disp:sub(1, 24) .. "..." end
+      if #q_disp > 18 then q_disp = q_disp:sub(1, 18) .. "..." end
       if r.ImGui_SmallButton(ctx, "x Search:" .. q_disp .. "##flt_text_query_off") then
         state.tag_filter_input = ""
         state.needs_reload_samples = true
@@ -4618,7 +4688,7 @@ local function draw_collapsed_filter_controls()
     if has_any then r.ImGui_SameLine(ctx, 0, 4) end
     has_any = true
     local t = tostring(tag or "")
-    if #t > 20 then t = t:sub(1, 20) .. "..." end
+    if #t > 16 then t = t:sub(1, 16) .. "..." end
     if r.ImGui_SmallButton(ctx, "x " .. t .. "##flt_tag_rm_" .. tostring(i)) then
       tag_ops.filter_tags_remove_at(i)
       break
@@ -4628,36 +4698,94 @@ local function draw_collapsed_filter_controls()
     if has_any then r.ImGui_SameLine(ctx, 0, 4) end
     has_any = true
     local t = "- " .. tostring(tag or "")
-    if #t > 20 then t = t:sub(1, 20) .. "..." end
+    if #t > 16 then t = t:sub(1, 16) .. "..." end
     if r.ImGui_SmallButton(ctx, "x " .. t .. "##flt_tag_ex_rm_" .. tostring(i)) then
       tag_ops.filter_tags_exclude_remove_at(i)
       break
     end
   end
-
   if has_any then
-    r.ImGui_SameLine(ctx, 0, 8)
+    r.ImGui_SameLine(ctx, 0, 6)
     if r.ImGui_SmallButton(ctx, "Clear all##collapsed_filter_clear_all") then
       tag_ops.clear_all_search_filters()
     end
   else
-    r.ImGui_Text(ctx, "Filters: (none)")
+    if r.ImGui_PushStyleColor and r.ImGui_Col_Text then
+      local ok = pcall(function()
+        r.ImGui_PushStyleColor(ctx, r.ImGui_Col_Text(), C.MODERN_UI.color_text_disabled or 0x45464DFF)
+      end)
+      r.ImGui_Text(ctx, "— none")
+      if ok and r.ImGui_PopStyleColor then pcall(function() r.ImGui_PopStyleColor(ctx, 1) end) end
+    else
+      r.ImGui_Text(ctx, "— none")
+    end
   end
-  end
+end
 
-  if filter_child_begun and is_imgui_ctx_valid() then
-    pcall(function() r.ImGui_EndChild(ctx) end)
+local function filter_summary_has_active()
+  if state.favorites_only_filter then return true end
+  if state.key_filter_enabled then return true end
+  if state.bpm_filter_enabled then return true end
+  if state.type_filter_enabled and (state.type_is_one_shot or state.type_is_loop) then return true end
+  local q = tostring(state.tag_filter_input or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if q ~= "" then return true end
+  if state.filter_tags and #state.filter_tags > 0 then return true end
+  if state.filter_tags_exclude and #state.filter_tags_exclude > 0 then return true end
+  return false
+end
+
+local function collapsed_panel_row_h()
+  return math.max(18, math.floor(tonumber(C.COLLAPSED_PANEL_ROW_H) or 20))
+end
+
+local function collapsed_panel_scrollbar_h()
+  return math.max(8, math.floor(tonumber(C.MODERN_UI and C.MODERN_UI.scrollbar_size) or 10))
+end
+
+local function collapsed_panel_outer_h(summary_scrollable)
+  local h = collapsed_panel_row_h()
+  if summary_scrollable then
+    h = h + collapsed_panel_scrollbar_h()
+  end
+  return h
+end
+
+local function draw_collapsed_panel_row(collapsed_key, title, draw_summary_fn, summary_scrollable)
+  if not is_imgui_ctx_valid() then return end
+  local content_h = collapsed_panel_row_h()
+  local collapsed = state.ui[collapsed_key] == true
+  local icon = collapsed and ">" or "v"
+  if draw_text_only_button(icon .. "##tog_" .. collapsed_key, 16, content_h) then
+    state.ui[collapsed_key] = not collapsed
+  end
+  pcall(function() r.ImGui_SameLine(ctx, 0, 6) end)
+  pcall(function() r.ImGui_Text(ctx, tostring(title or "")) end)
+  if type(draw_summary_fn) ~= "function" then return end
+  pcall(function() r.ImGui_SameLine(ctx, 0, 6) end)
+  if summary_scrollable then
+    local child_h = content_h + collapsed_panel_scrollbar_h()
+    local flags = window_flag_noresize() | window_flag_noscroll_with_mouse()
+    if r.ImGui_WindowFlags_HorizontalScrollbar then
+      flags = flags | r.ImGui_WindowFlags_HorizontalScrollbar()
+    end
+    if imgui_utils then
+      imgui_utils.with_child(ctx, r, "##collapsed_scroll_" .. tostring(collapsed_key), 0, child_h, 0, flags, draw_summary_fn)
+    else
+      draw_summary_fn()
+    end
+  else
+    draw_summary_fn()
   end
 end
 
 draw_panel_heading_row = function(collapsed_key, title)
   if not is_imgui_ctx_valid() then return end
   local collapsed = state.ui[collapsed_key] == true
-  local icon = collapsed and "?" or "?"
-  if draw_text_only_button(icon .. "##tog_" .. collapsed_key, 18, 18) then
+  local icon = collapsed and ">" or "v"
+  if draw_text_only_button(icon .. "##tog_" .. collapsed_key, 16, 18) then
     state.ui[collapsed_key] = not collapsed
   end
-  pcall(function() r.ImGui_SameLine(ctx, 0, 8) end)
+  pcall(function() r.ImGui_SameLine(ctx, 0, 6) end)
   pcall(function() r.ImGui_Text(ctx, title) end)
 end
 
@@ -4712,8 +4840,10 @@ local function draw_scan_progress_window()
         r.ImGui_TextWrapped(ctx, "Update Galaxy: ready to repair missing analysis...")
       elseif stage == "repair" then
         r.ImGui_TextWrapped(ctx, "Update Galaxy: repairing missing analysis...")
+        r.ImGui_TextWrapped(ctx, "Note: this step may freeze REAPER for several seconds while audio features are recomputed.")
       elseif stage == "rebuild" then
         r.ImGui_TextWrapped(ctx, "Update Galaxy: rebuilding embedding...")
+        r.ImGui_TextWrapped(ctx, "Note: UMAP rebuild may freeze REAPER for a long time on large libraries.")
       else
         r.ImGui_TextWrapped(ctx, "Update Galaxy: scanning libraries...")
       end
@@ -5282,7 +5412,21 @@ local function loop()
   if r.SetExtState then
     local now = (r.time_precise and r.time_precise()) or os.time()
     r.SetExtState(XS.section, XS.running, instance_id, false)
-    r.SetExtState(XS.section, XS.heartbeat, tostring(now), false)
+    local last_hb = tonumber(state and state.runtime and state.runtime.heartbeat_write_last) or 0
+    if (now - last_hb) >= 0.75 then
+      if state and state.runtime then
+        state.runtime.heartbeat_write_last = now
+      end
+      r.SetExtState(XS.section, XS.heartbeat, tostring(now), false)
+    end
+  end
+  if state and state.runtime and ext_state then
+    local t = (r.time_precise and r.time_precise()) or os.clock()
+    local next_poll = tonumber(state.runtime.perf_ext_poll_at) or 0
+    if t >= next_poll then
+      state.runtime.perf_ext_poll_at = t + 2.0
+      state.runtime.perf_enabled = ext_state.get_extstate_bool(r, XS.section, "ui_perf_overlay", state.runtime.perf_enabled == true)
+    end
   end
   if state and state.runtime and ctx then
     local sig = tostring(ctx)
@@ -5476,6 +5620,7 @@ local function loop()
         end
       end
     end
+    flush_reload_pack_lists_if_needed()
     local win_w, win_h = r.ImGui_GetWindowSize(ctx)
     refresh_preview_state()
 
@@ -5502,85 +5647,53 @@ local function loop()
     if not C.DEBUG_MINIMAL_LAYOUT then
     state.ui.follow_arrange_selection = false
 
-    draw_panel_heading_row("pack_panel_collapsed", "Packs")
     if not state.ui.pack_panel_collapsed then
-      local pack_child_begun = false
-      local pack_section_visible = false
-      local pack_pre_w, pack_pre_h = nil, nil
-      local pack_post_w, pack_post_h = nil, nil
-      pcall(function()
-        pack_pre_w, pack_pre_h = r.ImGui_GetWindowSize(ctx)
-      end)
-      local ok_pack_begin = pcall(function()
-        pack_section_visible = r.ImGui_BeginChild(ctx, "##pack_section", 0, pack_h, 1, window_flag_noresize()) == true
-        pack_child_begun = true
-      end)
-      pcall(function()
-        pack_post_w, pack_post_h = r.ImGui_GetWindowSize(ctx)
-      end)      if ok_pack_begin and pack_section_visible then
-        local ok_pack_draw, pack_draw_err = pcall(function()
-          if state.runtime.perf_gate then
-            state.runtime.perf_pack_t0 = (r.time_precise and r.time_precise()) or os.clock()
-          end
-          draw_pack_section(win_w)
-          if state.runtime.perf_gate then
-            state.runtime.perf_acc.draw_pack = (tonumber(state.runtime.perf_acc.draw_pack) or 0) + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_pack_t0) or 0))
+      draw_panel_heading_row("pack_panel_collapsed", "Packs")
+      if imgui_utils then
+        imgui_utils.with_child(ctx, r, "##pack_section", 0, pack_h, 1, window_flag_noresize(), function()
+          local ok_pack_draw, pack_draw_err = pcall(function()
+            if state.runtime.perf_gate then
+              state.runtime.perf_pack_t0 = (r.time_precise and r.time_precise()) or os.clock()
+            end
+            draw_pack_section(win_w)
+            if state.runtime.perf_gate then
+              state.runtime.perf_acc.draw_pack = (tonumber(state.runtime.perf_acc.draw_pack) or 0) + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_pack_t0) or 0))
+            end
+          end)
+          if not ok_pack_draw then
+            set_runtime_notice("Pack section draw failed: " .. tostring(pack_draw_err or "unknown"))
           end
         end)
-        if not ok_pack_draw then
-          set_runtime_notice("Pack section draw failed: " .. tostring(pack_draw_err or "unknown"))
-        end      end
-      if pack_child_begun and is_ctx_valid() then
-        local ok_pack_end, err_pack_end = pcall(function() r.ImGui_EndChild(ctx) end)
-        local ok_pack_end_probe, pack_end_w, pack_end_h = pcall(function()
-          return r.ImGui_GetWindowSize(ctx)
-        end)        if not ok_pack_end then        end
-      elseif pack_child_begun then      end
+      end
       safe_separator()
       local max_ph = math.floor(win_h * 0.62)
       pack_h = draw_panel_splitter_resolve(win_w, "pack", pack_h, 72, max_ph)
       state.ui.panel_pack_h_px = pack_h
     else
-      draw_collapsed_pack_controls()
+      draw_collapsed_panel_row("pack_panel_collapsed", "Packs", draw_pack_summary_inline, #state.filter_pack_ids > 0)
       safe_separator()
     end
 
-    draw_panel_heading_row("search_panel_collapsed", "Search & filters")
     if not state.ui.search_panel_collapsed then
-      local search_child_begun = false
-      local search_section_visible = false
-      local ok_search_begin = false
-      local search_pre_w, search_pre_h = nil, nil
-      local search_post_w, search_post_h = nil, nil
-      if is_ctx_valid() then
-        pcall(function()
-          search_pre_w, search_pre_h = r.ImGui_GetWindowSize(ctx)
+      draw_panel_heading_row("search_panel_collapsed", "Search & filters")
+      if is_ctx_valid() and imgui_utils then
+        imgui_utils.with_child(ctx, r, "##search_section", 0, search_h, 1, r.ImGui_WindowFlags_NoScrollbar() | window_flag_noresize(), function()
+          if state.runtime.perf_gate then
+            state.runtime.perf_search_t0 = (r.time_precise and r.time_precise()) or os.clock()
+          end
+          draw_search_section(win_w)
+          if state.runtime.perf_gate then
+            state.runtime.perf_acc.draw_search = (tonumber(state.runtime.perf_acc.draw_search) or 0) + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_search_t0) or 0))
+          end
         end)
-        ok_search_begin = pcall(function()
-          search_section_visible = r.ImGui_BeginChild(ctx, "##search_section", 0, search_h, 1, r.ImGui_WindowFlags_NoScrollbar() | window_flag_noresize()) == true
-          search_child_begun = true
-        end)
-        pcall(function()
-          search_post_w, search_post_h = r.ImGui_GetWindowSize(ctx)
-        end)
-      end      if ok_search_begin and search_section_visible then
-        if state.runtime.perf_gate then
-          state.runtime.perf_search_t0 = (r.time_precise and r.time_precise()) or os.clock()
-        end
-        draw_search_section(win_w)
-        if state.runtime.perf_gate then
-          state.runtime.perf_acc.draw_search = (tonumber(state.runtime.perf_acc.draw_search) or 0) + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_search_t0) or 0))
-        end      end
-      if search_child_begun and search_section_visible and is_ctx_valid() then
-        local ok_search_end, err_search_end = pcall(function() r.ImGui_EndChild(ctx) end)
-        if not ok_search_end then        end
-      elseif search_child_begun and not search_section_visible then      elseif search_child_begun then      end
+      end
       safe_separator()
       local max_sh = math.min(math.floor(win_h * 0.62), C.SEARCH_PANEL_MAX_H_PX)
       search_h = draw_panel_splitter_resolve(win_w, "search", search_h, 64, max_sh)
       state.ui.panel_search_h_px = search_h
     else
-      draw_collapsed_filter_controls()      safe_separator()
+      draw_collapsed_panel_row("search_panel_collapsed", "Search & filters", draw_filter_summary_inline, filter_summary_has_active())
+      safe_separator()
     end
 
     safe_text("Samples & preview")
@@ -5602,14 +5715,17 @@ local function loop()
       rest_h = math.max(140, math.floor(win_h - cy - 10))
     else
       local hdr = 26
-      local spl = 6
-      local used = hdr
+      local spl = 4
+      local used = 0
       if not state.ui.pack_panel_collapsed then
-        used = used + pack_h + spl
+        used = used + hdr + pack_h + spl
+      else
+        used = used + collapsed_panel_outer_h(#state.filter_pack_ids > 0) + spl
       end
-      used = used + hdr
       if not state.ui.search_panel_collapsed then
-        used = used + search_h + spl
+        used = used + hdr + search_h + spl
+      else
+        used = used + collapsed_panel_outer_h(filter_summary_has_active()) + spl
       end
       used = used + hdr + 22
       rest_h = math.max(140, win_h - used)
@@ -5636,8 +5752,20 @@ local function loop()
     local detail_h = math.floor(math.max(min_detail_h, math.min(max_detail_h, preferred_detail_h)))
     local list_h = math.max(min_list_h, math.floor(rest_h - detail_h - splitter_h))
 
+    if state.runtime.perf_gate then
+      state.runtime.perf_reload_t0 = (r.time_precise and r.time_precise()) or os.clock()
+    end
     reload_samples_if_needed()
+    if state.runtime.perf_gate then
+      state.runtime.perf_acc.reload_samples = (tonumber(state.runtime.perf_acc.reload_samples) or 0)
+        + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_reload_t0) or 0))
+      state.runtime.perf_prewarm_t0 = (r.time_precise and r.time_precise()) or os.clock()
+    end
     prewarm_galaxy_points_cache_step()
+    if state.runtime.perf_gate then
+      state.runtime.perf_acc.prewarm_galaxy = (tonumber(state.runtime.perf_acc.prewarm_galaxy) or 0)
+        + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_prewarm_t0) or 0))
+    end
 
     local ok_samples_draw, samples_draw_err = pcall(draw_samples_section, win_w, list_h)
     if not ok_samples_draw then
@@ -5662,8 +5790,11 @@ local function loop()
       if (state.runtime.perf_now - state.runtime.perf_last) >= 1.0 then
         state.runtime.perf_frames = math.max(1, tonumber(state.runtime.perf_acc.frames) or 1)
         state.runtime.perf_last_report = string.format(
-          "Perf(avg ms): scan=%.2f pack=%.2f search=%.2f detail=%.2f",
+          "Perf(avg ms): scan=%.2f rld=%.2f pre=%.2f gfr=%.2f | pack=%.2f search=%.2f detail=%.2f",
           ((tonumber(state.runtime.perf_acc.tick_scan) or 0) * 1000.0) / state.runtime.perf_frames,
+          ((tonumber(state.runtime.perf_acc.reload_samples) or 0) * 1000.0) / state.runtime.perf_frames,
+          ((tonumber(state.runtime.perf_acc.prewarm_galaxy) or 0) * 1000.0) / state.runtime.perf_frames,
+          ((tonumber(state.runtime.perf_acc.tick_gfr) or 0) * 1000.0) / state.runtime.perf_frames,
           ((tonumber(state.runtime.perf_acc.draw_pack) or 0) * 1000.0) / state.runtime.perf_frames,
           ((tonumber(state.runtime.perf_acc.draw_search) or 0) * 1000.0) / state.runtime.perf_frames,
           ((tonumber(state.runtime.perf_acc.draw_detail) or 0) * 1000.0) / state.runtime.perf_frames
@@ -5671,6 +5802,9 @@ local function loop()
         state.runtime.perf_last_report_at = state.runtime.perf_now
         state.runtime.perf_acc.frames = 0
         state.runtime.perf_acc.tick_scan = 0
+        state.runtime.perf_acc.reload_samples = 0
+        state.runtime.perf_acc.prewarm_galaxy = 0
+        state.runtime.perf_acc.tick_gfr = 0
         state.runtime.perf_acc.draw_pack = 0
         state.runtime.perf_acc.draw_search = 0
         state.runtime.perf_acc.draw_detail = 0
@@ -5679,7 +5813,14 @@ local function loop()
     handle_waveform_mouse()
     -- D&D???????E??E??E???????????????
     handle_drag_drop_insert()
+    if state.runtime.perf_gate then
+      state.runtime.perf_gfr_t0 = (r.time_precise and r.time_precise()) or os.clock()
+    end
     tick_galaxy_full_refresh()
+    if state.runtime.perf_gate then
+      state.runtime.perf_acc.tick_gfr = (tonumber(state.runtime.perf_acc.tick_gfr) or 0)
+        + (((r.time_precise and r.time_precise()) or os.clock()) - (tonumber(state.runtime.perf_gfr_t0) or 0))
+    end
 
     if state and state.runtime and state.runtime.dock_restore_pending and r.ImGui_GetWindowDockID then
       local want = tonumber(state.runtime.persisted_dock_id)

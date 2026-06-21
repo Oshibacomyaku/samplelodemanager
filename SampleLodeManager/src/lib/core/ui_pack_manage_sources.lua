@@ -20,6 +20,12 @@ local function ensure_fn(fn, fallback)
   return function() end
 end
 
+local imgui_utils = nil
+do
+  local ok, mod = pcall(require, "lib.core.ui_imgui_utils")
+  if ok and type(mod) == "table" then imgui_utils = mod end
+end
+
 local function is_imgui_ctx_valid()
   if not (r and ctx) then return false end
   if not r.ImGui_ValidatePtr then return true end
@@ -29,27 +35,14 @@ local function is_imgui_ctx_valid()
   return ok_v and valid == true
 end
 
-local function begin_child_safe(id, w, h, border, flags)
-  if not is_imgui_ctx_valid() then
-    return false, false
-  end
-  local begun = false
-  local visible = false
-  local ok_begin = pcall(function()
-    local ret = r.ImGui_BeginChild(ctx, id, w, h, border, flags)
-    begun = true
-    visible = ret == true
-  end)
-  if not ok_begin then
-    begun = false
-    visible = false
-  end
-  return begun, visible
+local function child_begin(id, w, h, border, flags)
+  if not imgui_utils then return false, false end
+  return imgui_utils.begin_child_safe(ctx, r, id, w, h, border, flags)
 end
 
-local function end_child_safe(begun)
-  if not begun then return end
-  pcall(function() r.ImGui_EndChild(ctx) end)
+local function child_end(should_end)
+  if not imgui_utils then return end
+  imgui_utils.end_child_safe(ctx, r, should_end)
 end
 
 function M.setup(deps)
@@ -181,7 +174,7 @@ function M.draw_modal()
           end          r.ImGui_Spacing(ctx)
           r.ImGui_Separator(ctx)
           r.ImGui_Text(ctx, "Library")
-          r.ImGui_TextWrapped(ctx, "Rescan: sync enabled roots to the database (new/changed files; usually fast).")
+          r.ImGui_TextWrapped(ctx, "Rescan: re-imports sounds.db (if path is set), syncs external roots, and analyzes new Splice oneshots.")
           if r.ImGui_Button(ctx, "Rescan All", -1, 24) then
             if scan_controller and type(scan_controller.begin_async_rescan_all) == "function" then
               scan_controller.begin_async_rescan_all()
@@ -223,7 +216,7 @@ function M.draw_modal()
               root_rows = rows
             end
           end
-          local list_h = math.min(180, 22 + 24 * math.max(1, #root_rows))          local configured_paths_begun, configured_paths_visible = begin_child_safe(
+          local list_h = math.min(180, 22 + 24 * math.max(1, #root_rows))          local configured_paths_begun, configured_paths_visible = child_begin(
             "##configured_paths_list",
             0,
             list_h,
@@ -256,7 +249,7 @@ function M.draw_modal()
             end
           end
           if configured_paths_begun and configured_paths_visible then
-            end_child_safe(true)
+            child_end(true)
           else          end          if r.ImGui_EndTabItem then
             pcall(r.ImGui_EndTabItem, ctx)
           end        end
@@ -357,7 +350,7 @@ function M.draw_modal()
           if type(rel_roots) ~= "table" then rel_roots = {} end
           r.ImGui_Text(ctx, "Search folders:")
           local rel_list_h = math.min(140, 20 + 22 * math.max(1, #rel_roots))
-          local splice_roots_begun, splice_roots_visible = begin_child_safe(
+          local splice_roots_begun, splice_roots_visible = child_begin(
             "##splice_relink_roots_list",
             0,
             rel_list_h,
@@ -382,7 +375,9 @@ function M.draw_modal()
               end
             end
           end
-          end_child_safe(splice_roots_begun)
+          if splice_roots_begun and splice_roots_visible then
+            child_end(true)
+          end
           if r.ImGui_Button(ctx, "Scan folders & update paths (Splice)", -1, 24) then
             if #rel_roots == 0 then
               state.store.error = "Add at least one search folder."
@@ -444,7 +439,7 @@ function M.draw_modal()
             if type(dups) == "table" and #dups > 0 then
               r.ImGui_Text(ctx, "Duplicate filenames on disk (arbitrary pick per row):")
               local dup_h = math.min(200, 16 + 18 * math.min(#dups, 12))
-              local splice_dup_begun, splice_dup_visible = begin_child_safe(
+              local splice_dup_begun, splice_dup_visible = child_begin(
                 "##splice_relink_dup_list",
                 0,
                 dup_h,
@@ -456,7 +451,9 @@ function M.draw_modal()
                   r.ImGui_Text(ctx, string.format("  %s  x%s", tostring(d.filename), tostring(d.count)))
                 end
               end
-              end_child_safe(splice_dup_begun)
+              if splice_dup_begun and splice_dup_visible then
+                child_end(true)
+              end
             end
             local ee = rep.enumerate_errors
             if type(ee) == "table" and #ee > 0 then

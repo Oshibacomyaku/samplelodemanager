@@ -7,6 +7,12 @@ do
   if ok then manage_sources_ui = mod end
 end
 
+local imgui_utils = nil
+do
+  local ok, mod = pcall(require, "lib.core.ui_imgui_utils")
+  if ok and type(mod) == "table" then imgui_utils = mod end
+end
+
 local r = nil
 local ctx = nil
 local state = nil
@@ -83,23 +89,13 @@ local function run_with_font_scope(font, size_px, draw_fn)
 end
 
 local function begin_child_safe(id, w, h, border, flags)
-  if not is_imgui_ctx_valid() then
-    return false, false
-  end
-  local ok_begin, visible = pcall(function()
-    return r.ImGui_BeginChild(ctx, id, w, h, border, flags)
-  end)
-  if not ok_begin then
-    return false, false
-  end
-  return true, visible == true
+  if not imgui_utils then return false, false end
+  return imgui_utils.begin_child_safe(ctx, r, id, w, h, border, flags)
 end
 
-local function end_child_safe(begin_called)
-  if not begin_called then return end
-  pcall(function()
-    r.ImGui_EndChild(ctx)
-  end)
+local function end_child_safe(should_end)
+  if not imgui_utils then return end
+  imgui_utils.end_child_safe(ctx, r, should_end)
 end
 
 local function draw_favorite_icon_button(id, is_on, w, h)

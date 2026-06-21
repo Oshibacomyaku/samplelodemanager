@@ -47,6 +47,12 @@ local begin_drag_for_row = nil
 local open_sample_edit_popup_for_row = nil
 local open_sample_edit_popup_for_ids = nil
 
+local imgui_utils = nil
+do
+  local ok, mod = pcall(require, "lib.core.ui_imgui_utils")
+  if ok and type(mod) == "table" then imgui_utils = mod end
+end
+
 local function ensure_fn(fn, fallback)
   if type(fn) == "function" then return fn end
   if type(fallback) == "function" then return fallback end
@@ -134,8 +140,6 @@ function M.draw(_win_w, list_h)
   list_h = math.max(SAMPLE_SECTION_MIN_H, math.floor(tonumber(list_h) or 120))
   local pushed_font = safe_push_font(font_main, list_ui.font_px)
   local pushed_item_spacing = false
-  local list_child_begun = false
-  local list_child_visible = false
   local table_begun = false
 
   local function key_root_dual_label(root_raw)
@@ -202,18 +206,12 @@ function M.draw(_win_w, list_h)
   pcall(function()
     pre_child_w, pre_child_h = r.ImGui_GetWindowSize(ctx)
   end)
-  local ok_child = pcall(function()
-    local ret = r.ImGui_BeginChild(ctx, "##sample_list", 0, list_h, 1, flags)
-    list_child_begun = true
-    list_child_visible = ret == true
-  end)
-  local post_child_w, post_child_h = nil, nil
-  pcall(function()
-    post_child_w, post_child_h = r.ImGui_GetWindowSize(ctx)
-  end)
-  if not ok_child then
-    list_child_visible = false
-  end  if list_child_visible then
+  if imgui_utils then
+    imgui_utils.with_child(ctx, r, "##sample_list", 0, list_h, 1, flags, function()
+      local post_child_w, post_child_h = nil, nil
+      pcall(function()
+        post_child_w, post_child_h = r.ImGui_GetWindowSize(ctx)
+      end)
     if cover_art and state.runtime.cover_art and state.ui.cover_auto_download == true then
       state.runtime.cover_art.ctx_ref = ctx
       cover_art.process_queue(state.runtime.cover_art.queue, 1)
@@ -491,13 +489,14 @@ function M.draw(_win_w, list_h)
         table_begun = false
       end
     end
+    end)
   end
-  end)  if table_begun and r.ImGui_EndTable then
+  end)
+  if table_begun and r.ImGui_EndTable then
     pcall(function() r.ImGui_EndTable(ctx) end)
     table_begun = false
   end
-  if list_child_begun and list_child_visible then
-    local ok_end_child, err_end_child = pcall(function() r.ImGui_EndChild(ctx) end)  elseif list_child_begun then  end  if pushed_item_spacing and r.ImGui_PopStyleVar then
+  if pushed_item_spacing and r.ImGui_PopStyleVar then
     pcall(function() r.ImGui_PopStyleVar(ctx, 1) end)
   end
   safe_pop_font(pushed_font)

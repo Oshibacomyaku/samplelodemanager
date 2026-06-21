@@ -13,6 +13,59 @@ local function ensure_fn(fn)
   return function() end
 end
 
+local function splice_root_ids_by_id()
+  local out = {}
+  if not (sqlite_store and state and state.store and state.store.available) then
+    return out
+  end
+  for _, rt in ipairs(sqlite_store.list_roots(state.store) or {}) do
+    if tostring(rt.source_type or "") == "splice" then
+      local rid = tonumber(rt.id)
+      if rid and rid > 0 then out[rid] = true end
+    end
+  end
+  return out
+end
+
+local function rescan_targets_splice(root_ids)
+  local splice_ids = splice_root_ids_by_id()
+  for _, raw in ipairs(root_ids or {}) do
+    if splice_ids[tonumber(raw)] then return true end
+  end
+  return false
+end
+
+-- Re-read Splice sounds.db so newly synced downloads appear before scan/analyze.
+local function try_reimport_splice_db()
+  if not (sqlite_store and type(sqlite_store.import_splice_db) == "function") then
+    return nil, "sqlite import unavailable"
+  end
+  if not (state and state.store and state.store.available and state.store.conn) then
+    return nil, "store not ready"
+  end
+  local path = state.manage and state.manage.splice_db_path_input
+  if not path or tostring(path) == "" then
+    return nil, "splice db path not configured"
+  end
+  local f = io.open(tostring(path), "rb")
+  if not f then
+    return nil, "splice sounds.db not found"
+  end
+  f:close()
+  local ok_imp, ok2, imported_or_err = pcall(function()
+    return sqlite_store.import_splice_db(state.store, tostring(path))
+  end)
+  if not ok_imp then
+    return nil, tostring(ok2 or "import failed")
+  end
+  if not ok2 then
+    return nil, tostring(imported_or_err or "import failed")
+  end
+  reload_pack_lists()
+  state.needs_reload_samples = true
+  return tonumber(imported_or_err) or 0
+end
+
 function M.setup(deps)
   deps = type(deps) == "table" and deps or {}
   r = deps.r
@@ -28,6 +81,14 @@ function M.begin_async_rescan_roots(root_ids, scan_opts)
     return false
   end
   scan_opts = type(scan_opts) == "table" and scan_opts or {}
+  if scan_opts.reimport_splice == true or rescan_targets_splice(root_ids) then
+    local imported, imp_err = try_reimport_splice_db()
+    if imported ~= nil then
+      set_runtime_notice("Splice sounds.db re-imported: " .. tostring(imported) .. " samples")
+    elseif imp_err and tostring(imp_err) ~= "splice db path not configured" then
+      set_runtime_notice("Splice re-import skipped: " .. tostring(imp_err))
+    end
+  end
   local current = state.manage and state.manage.scan_runner or nil
   if current and not current.done then
     set_runtime_notice("A scan is already running. Cancel it first.")
@@ -68,16 +129,12 @@ end
 function M.begin_async_rescan_all(scan_opts)
   if not (state and state.store and state.store.available and state.store.conn and sqlite_store) then return end
   scan_opts = type(scan_opts) == "table" and scan_opts or {}
+  scan_opts.reimport_splice = true
   local roots = sqlite_store.list_roots(state.store)
   local root_ids = {}
   for _, rt in ipairs(roots or {}) do
     local rid = tonumber(rt.id)
-    local src = tostring(rt.source_type or "")
-    local include = true
-    if src == "splice" and scan_opts.force_phase_d_all ~= true then
-      include = false
-    end
-    if rid and rid > 0 and include then
+    if rid and rid > 0 then
       root_ids[#root_ids + 1] = rid
     end
   end
