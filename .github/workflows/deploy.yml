@@ -24,11 +24,11 @@ jobs:
           ruby-version: 3.2
       - name: Install reapack-index
         run: gem install reapack-index
-      # --amend: 同じ @version のまま中身を直したときも index の取得元コミットを更新する
-      # --rebuild は使わない: 全履歴の再処理で @noindex 付き同梱ファイルの扱いと相性が悪く、<source file="src/..."> が落ちることがある。
-      #    手元で index を作り直したいときだけ `reapack-index --rebuild` を実行する。
+      # --amend は「同じ @version のまま中身だけ直す」とき専用。新版番号（0.2.8→0.2.9 等）では
+      # --amend すると <source file="src/..."> が落ちて CI ガードが失敗するため使わない。
+      # 同版のホットフィックス時だけ手元で `reapack-index --commit --amend` を実行する。
       - name: Update index.xml
-        run: reapack-index --commit --amend -o index.xml .
+        run: reapack-index --commit -o index.xml .
       # ルート <metadata> の RTF に README の `src/**/*.lua` 等が入り、全文 grep が誤カウントするので <source 行だけ数える
       - name: Refuse incomplete index (do not push)
         run: |
