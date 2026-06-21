@@ -12,6 +12,7 @@
 -- @provides [nomain] src/lib/core/ui_samples_galaxy.lua
 -- @provides [nomain] src/lib/core/ui_samples_list.lua
 -- @provides [nomain] src/lib/core/ui_search.lua
+-- @provides [nomain] src/lib/core/resource_paths.lua
 -- @provides [nomain] src/lib/core/ui_theme.lua
 -- @provides [nomain] src/lib/db/db_manager.lua
 -- @provides [nomain] src/lib/db/sqlite_store.lua
@@ -65,16 +66,24 @@ local function bundled_lsqlite_cpath_prefix()
   if r.GetAppVersion then
     gv = tostring(r.GetAppVersion() or ""):lower()
   end
+  local os_name = ""
+  if r.GetOS then
+    os_name = tostring(r.GetOS() or ""):lower()
+  end
   local sub, pat
-  if gv:find("macos%-arm64", 1) then
+  if gv:find("macos%-arm64", 1) or os_name:find("arm64", 1) or os_name:find("aarch64", 1) then
     sub, pat = "bin/darwin-arm64/", "?.so"
-  elseif gv:find("osx64", 1) then
+  elseif gv:find("osx64", 1) or os_name:find("osx", 1) or os_name:find("mac", 1) then
     sub, pat = "bin/darwin64/", "?.so"
-  elseif gv:find("/x64", 1) then
+  elseif gv:find("/x64", 1) or os_name:find("win64", 1) or os_name:find("x64", 1) then
     sub, pat = "bin/win64/", "?.dll"
   elseif gv:match("^%d+%.%d+$") then
-    -- e.g. "7.67" without arch suffix => 32-bit Windows (ReaScript docs)
-    sub, pat = "bin/win32/", "?.dll"
+    -- e.g. "7.67" without arch suffix — may be 32-bit Windows OR x64 build that omits /x64
+    if os_name:find("win", 1) or package.config:sub(1, 1) == "\\" then
+      sub, pat = "bin/win64/", "?.dll"
+    else
+      sub, pat = "bin/win32/", "?.dll"
+    end
   elseif gv:find("linux", 1) then
     if gv:find("aarch64", 1) then
       sub, pat = "bin/linux-aarch64/", "?.so"
@@ -88,11 +97,26 @@ local function bundled_lsqlite_cpath_prefix()
   return nil
 end
 
+local function bundled_lsqlite_cpath_prefixes()
+  local out = {}
+  local primary = bundled_lsqlite_cpath_prefix()
+  if primary then out[#out + 1] = primary end
+  local os_name = ""
+  if r.GetOS then os_name = tostring(r.GetOS() or ""):lower() end
+  if os_name:find("win", 1) or package.config:sub(1, 1) == "\\" then
+    local win64 = script_path .. "bin/win64/?.dll"
+    local win32 = script_path .. "bin/win32/?.dll"
+    if win64 ~= primary then out[#out + 1] = win64 end
+    if win32 ~= primary then out[#out + 1] = win32 end
+  end
+  return out
+end
+
 do
-  local prefix = bundled_lsqlite_cpath_prefix()
+  local prefixes = bundled_lsqlite_cpath_prefixes()
   local base = package.cpath or ""
-  if prefix then
-    package.cpath = prefix .. ";" .. base
+  if #prefixes > 0 then
+    package.cpath = table.concat(prefixes, ";") .. ";" .. base
   else
     package.cpath = base
   end
@@ -140,6 +164,48 @@ end
 local ok_co, cover_art_mod = pcall(require, "lib.cover_art")
 if ok_co and cover_art_mod and cover_art_mod.init then
   cover_art_mod.init(script_path)
+end
+
+-- v0.2.0 ユーザー対策: SQLite ネイティブモジュールが require できない場合のみ、
+-- 起動直後に行動可能な案内を1回だけ MB で表示する（成功時は無音）。
+-- 既存の Manage Sources の "SQLite backend unavailable." はそのまま残り、
+-- このダイアログはユーザーが画面を開かなくても気づけるよう補助する役割。
+local function diagnose_sqlite_load()
+  local candidates = { "lsqlite3", "lsqlite3complete", "sqlite3" }
+  local errs = {}
+  for _, name in ipairs(candidates) do
+    local ok_req = pcall(require, name)
+    if ok_req then
+      return nil
+    end
+    errs[#errs + 1] = string.format("  [%s] not found", name)
+  end
+  return table.concat(errs, "\n")
+end
+
+do
+  local err_summary = diagnose_sqlite_load()
+  if err_summary then
+    local expected_dll = script_path .. "bin/win64/lsqlite3complete.dll"
+    local lines = {
+      "Sample Lode Manager: SQLite native module is missing.",
+      "Database features (Manage Sources, Splice import, External roots) will be disabled.",
+      "",
+      "Recommended action:",
+      "  1) REAPER -> Extensions -> ReaPack -> Browse packages...",
+      "     Update 'Sample Lode Manager' to v0.2.7+ (DLL is bundled).",
+      "  2) If updated and still failing, confirm this file exists:",
+      "       " .. expected_dll,
+      "",
+      "Tried modules:",
+      err_summary,
+      "",
+      "(OK で続行します。Manage Sources に詳しいエラーが表示されます。)",
+    }
+    local body = table.concat(lines, "\n")
+    r.ShowConsoleMsg("[Sample Lode Manager] SQLite load diagnostic:\n" .. body .. "\n")
+    r.MB(body, "Sample Lode Manager: SQLite module missing", 0)
+  end
 end
 
 local ok, app = pcall(require, "lib.core.app")
