@@ -19,7 +19,7 @@ jobs:
       # index.xml はリリースコミットに同梱する（@provides 明示時は手動/ローカル reapack-index の方が
       # --commit/--amend より src/ 行が欠けにくい）。ここでは検証のみ行う。
       - name: Validate packages
-        run: reapack-index --check .
+        run: reapack-index --check -i tests .
       # ルート <metadata> の RTF に README の `src/**/*.lua` 等が入り、全文 grep が誤カウントするので <source 行だけ数える。
       # さらに「index 先頭 commit URL」に紐づく <source> が十分あるかも見る（main だけの版を防ぐ）。
       - name: Refuse incomplete index
@@ -39,4 +39,4 @@ jobs:
             fi
           fi
       - name: Verify @provides vs index.xml (latest version)
-        run: python3 scripts/verify_index_provides.py --version 0.2.9
+        run: python3 scripts/verify_index_provides.py

@@ -15,7 +15,8 @@ jobs:
       - name: Install reapack-index
         run: gem install reapack-index
       - name: Validate packages
-        run: reapack-index --check .
+        # tests/*.lua are busted specs, not ReaPack packages (no @version).
+        run: reapack-index --check -i tests .
       # Multi-file パッケージは index に <source file="src/..."> が無いと、ReaPack がエントリだけ更新して app.lua が古いまま残る
       - name: Verify index lists src/* sources
         run: |
@@ -26,7 +27,7 @@ jobs:
             exit 1
           fi
       - name: Verify @provides vs index.xml (latest version)
-        run: python3 scripts/verify_index_provides.py --version 0.2.9
+        run: python3 scripts/verify_index_provides.py
   lua-quality:
     runs-on: ubuntu-latest
     steps:
@@ -34,12 +35,13 @@ jobs:
         uses: actions/checkout@v4
       - name: Install Lua toolchain
         run: |
-          sudo apt-get install -yy lua5.4 luarocks
-          luarocks install luacheck
-          luarocks install busted
+          sudo apt-get install -yy lua5.4 liblua5.4-dev luarocks build-essential
+          luarocks install --lua-version=5.4 luacheck
+          luarocks install --lua-version=5.4 busted
           echo "$HOME/.luarocks/bin" >> $GITHUB_PATH
       - name: Luacheck (static analysis)
         run: |
+          eval "$(luarocks path)"
           luacheck SampleLodeManager/src --no-color
           luacheck tests --no-color
       - name: Syntax check (luac -p)
@@ -48,4 +50,6 @@ jobs:
             luac5.4 -p "$f" || exit 1
           done
       - name: Busted unit tests
-        run: busted --verbose -o TAP
+        run: |
+          eval "$(luarocks path)"
+          busted --verbose -o TAP
