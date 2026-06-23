@@ -749,66 +749,6 @@ function M.build_filename_guess_tags(filename, file_path, pack_name, splice_voca
   return tags
 end
 
-local function replace_filename_guess_tags(db, sample_id, tag_rows)
-  if not db or not sample_id then return end
-  exec_safe(db, string.format(
-    "DELETE FROM sample_tags WHERE sample_id=%d AND source='filename_guess';",
-    tonumber(sample_id) or -1
-  ))
-  if type(tag_rows) ~= "table" or #tag_rows == 0 then return end
-  local now = os.time()
-  for _, row in ipairs(tag_rows) do
-    local tag = row and row.tag or nil
-    local score = row and tonumber(row.score) or 0.5
-    if tag and tostring(tag) ~= "" then
-      exec_safe(db, string.format([[
-        INSERT OR IGNORE INTO sample_tags(sample_id, tag, score, source, created_at)
-        VALUES(%d, %s, %s, 'filename_guess', %d);
-      ]], sample_id, sql_quote(tostring(tag)), tostring(score), now))
-    end
-  end
-end
-
-local function replace_tag_candidate_tags(db, sample_id, tag_rows)
-  if not db or not sample_id then return end
-  exec_safe(db, string.format(
-    "DELETE FROM sample_tags WHERE sample_id=%d AND source='tag_candidate';",
-    tonumber(sample_id) or -1
-  ))
-  if type(tag_rows) ~= "table" or #tag_rows == 0 then return end
-  local now = os.time()
-  for _, row in ipairs(tag_rows) do
-    local tag = row and row.tag or nil
-    local score = row and tonumber(row.score) or 0.5
-    if tag and tostring(tag) ~= "" then
-      exec_safe(db, string.format([[
-        INSERT OR IGNORE INTO sample_tags(sample_id, tag, score, source, created_at)
-        VALUES(%d, %s, %s, 'tag_candidate', %d);
-      ]], sample_id, sql_quote(tostring(tag)), tostring(score), now))
-    end
-  end
-end
-
-local function replace_genre_guess_tags(db, sample_id, tag_rows)
-  if not db or not sample_id then return end
-  exec_safe(db, string.format(
-    "DELETE FROM sample_tags WHERE sample_id=%d AND source='genre_guess';",
-    tonumber(sample_id) or -1
-  ))
-  if type(tag_rows) ~= "table" or #tag_rows == 0 then return end
-  local now = os.time()
-  for _, row in ipairs(tag_rows) do
-    local tag = row and row.tag or nil
-    local score = row and tonumber(row.score) or 0.5
-    if tag and tostring(tag) ~= "" then
-      exec_safe(db, string.format([[
-        INSERT OR IGNORE INTO sample_tags(sample_id, tag, score, source, created_at)
-        VALUES(%d, %s, %s, 'genre_guess', %d);
-      ]], sample_id, sql_quote(tostring(tag)), tostring(score), now))
-    end
-  end
-end
-
 function M.apply_phase_c_rerank(tag_rows, audio_scores)
   if type(tag_rows) ~= "table" or #tag_rows == 0 then return tag_rows end
   if type(audio_scores) ~= "table" or next(audio_scores) == nil then return tag_rows end
