@@ -37,18 +37,19 @@ jobs:
         with:
           luaVersion: "5.4.6"
       - uses: leafo/gh-actions-luarocks@v4
-      - name: Install test tools
-        run: |
-          luarocks install luacheck
-          luarocks install busted
       - name: Luacheck (static analysis)
         run: |
-          luacheck SampleLodeManager/src --no-color
-          luacheck tests --no-color
+          luarocks install luacheck
+          eval "$(luarocks path)"
+          luacheck --config .luacheckrc SampleLodeManager/src tests --no-color
       - name: Syntax check (luac -p)
         run: |
+          eval "$(luarocks path)"
           find SampleLodeManager/src -name '*.lua' -print0 | while IFS= read -r -d '' f; do
             luac -p "$f" || exit 1
           done
       - name: Busted unit tests
-        run: busted --verbose -o TAP
+        run: |
+          luarocks install busted
+          eval "$(luarocks path)"
+          busted --verbose -o TAP
