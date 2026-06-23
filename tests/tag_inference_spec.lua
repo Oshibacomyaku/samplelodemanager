@@ -1,0 +1,27 @@
+require("spec_helper")
+local tag_inference = require("lib.db.tag_inference")
+
+describe("tag_inference.guess_type_and_bpm_and_key", function()
+  it("detects explicit BPM and loop from filename", function()
+    local r = tag_inference.guess_type_and_bpm_and_key("drums_128bpm_loop.wav")
+    assert.are.equal("loop", r.class_primary)
+    assert.are.equal(128, r.bpm)
+  end)
+
+  it("classifies oneshot from token", function()
+    local r = tag_inference.guess_type_and_bpm_and_key("kick_oneshot_hard.wav")
+    assert.are.equal("oneshot", r.class_primary)
+  end)
+
+  it("parses key major from filename", function()
+    local r = tag_inference.guess_type_and_bpm_and_key("synth_C_major_pad.wav")
+    assert.are.equal("C major", r.key_estimate)
+  end)
+end)
+
+describe("tag_inference.split_csv_tags", function()
+  it("splits and trims tags", function()
+    local tags = tag_inference.split_csv_tags(" kick, snare , hat ")
+    assert.are.same({ "kick", "snare", "hat" }, tags)
+  end)
+end)

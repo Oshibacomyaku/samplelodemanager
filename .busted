@@ -1,0 +1,8 @@
+return {
+  default = {
+    ROOT = { "tests" },
+    pattern = "_spec",
+    lpath = "tests/?.lua;SampleLodeManager/src/?.lua;SampleLodeManager/src/lib/?.lua;SampleLodeManager/src/lib/*/?.lua",
+    helper = "spec_helper",
+  },
+}

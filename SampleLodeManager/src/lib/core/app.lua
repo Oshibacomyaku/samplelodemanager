@@ -74,83 +74,38 @@ if type(C.LIST_UI) ~= "table" then C.LIST_UI = {} end
 
 local instance_id = tostring((r.time_precise and r.time_precise()) or os.time())
 
-local db_manager = nil
-do
-  local ok, mod = pcall(require, "lib.db.db_manager")
-  if ok then db_manager = mod end
+local function try_require_module(name, out_var)
+  local ok, mod_or_err = pcall(require, name)
+  if ok and mod_or_err then
+    return mod_or_err
+  end
+  r.ShowConsoleMsg(string.format(
+    "[Sample Lode Manager] require failed: %s — %s\n",
+    tostring(name),
+    tostring(mod_or_err)
+  ))
+  return nil
 end
 
-local sqlite_store = nil
-do
-  local ok, mod = pcall(require, "lib.db.sqlite_store")
-  if ok then sqlite_store = mod end
-end
-
-local resource_paths = nil
-do
-  local ok, mod = pcall(require, "lib.core.resource_paths")
-  if ok then resource_paths = mod end
-end
-
-local waveform = nil
-do
-  local ok, mod = pcall(require, "waveform")
-  if ok then waveform = mod end
-end
-
-local cover_art = nil
-do
-  local ok, mod = pcall(require, "lib.cover_art")
-  if ok then cover_art = mod end
-end
-
-local scan_controller = nil
-do
-  local ok, mod = pcall(require, "lib.core.scan_controller")
-  if ok then scan_controller = mod end
-end
-
-local ui_search = nil
-do
-  local ok, mod = pcall(require, "lib.core.ui_search")
-  if ok then ui_search = mod end
-end
-
-local ui_pack = nil
-do
-  local ok, mod = pcall(require, "lib.core.ui_pack")
-  if ok then ui_pack = mod end
-end
-
-local ui_samples_list = nil
-do
-  local ok, mod = pcall(require, "lib.core.ui_samples_list")
-  if ok then ui_samples_list = mod end
-end
-
-local ui_samples_galaxy = nil
-do
-  local ok, mod = pcall(require, "lib.core.ui_samples_galaxy")
-  if ok then ui_samples_galaxy = mod end
-end
-
-local imgui_utils = nil
-do
-  local ok, mod = pcall(require, "lib.core.ui_imgui_utils")
-  if ok and type(mod) == "table" then imgui_utils = mod end
-end
-
-local ext_state = nil
-do
-  local ok, mod = pcall(require, "lib.core.ext_state")
-  if ok and type(mod) == "table" then ext_state = mod end
-end
-
-local key_bpm = nil
-do
-  local ok, mod = pcall(require, "lib.core.key_bpm_utils")
-  if ok and type(mod) == "table" then key_bpm = mod end
-end
+local db_manager = try_require_module("lib.db.db_manager")
+local sqlite_store = try_require_module("lib.db.sqlite_store")
+local resource_paths = try_require_module("lib.core.resource_paths")
+local waveform = try_require_module("waveform")
+local cover_art = try_require_module("lib.cover_art")
+local scan_controller = try_require_module("lib.core.scan_controller")
+local ui_search = try_require_module("lib.core.ui_search")
+local ui_pack = try_require_module("lib.core.ui_pack")
+local ui_samples_list = try_require_module("lib.core.ui_samples_list")
+local ui_samples_galaxy = try_require_module("lib.core.ui_samples_galaxy")
+local ui_dnd = try_require_module("lib.core.ui_dnd")
+local ui_edit_popup = try_require_module("lib.core.ui_edit_popup")
+local imgui_utils = try_require_module("lib.core.ui_imgui_utils")
+if type(imgui_utils) ~= "table" then imgui_utils = nil end
+local ext_state = try_require_module("lib.core.ext_state")
+if type(ext_state) ~= "table" then ext_state = nil end
+local key_bpm = try_require_module("lib.core.key_bpm_utils")
+if type(key_bpm) ~= "table" then key_bpm = nil end
+local ui_preview = try_require_module("lib.core.ui_preview")
 
 -- forward declarations (defined later)
 local tick_galaxy_full_refresh
@@ -158,6 +113,7 @@ local draw_panel_heading_row
 local draw_rows_virtualized
 local tag_ops
 local galaxy_ops
+local setup_all_ui_modules
 
 local function window_flag_noresize()
   if r.ImGui_WindowFlags_NoResize then
@@ -529,27 +485,11 @@ local function ui_slider_db(label, value, min_v, max_v, format_str)
 end
 
 local function sanitize_root_path_input(raw)
+  if resource_paths and type(resource_paths.sanitize_root_path) == "function" then
+    return resource_paths.sanitize_root_path(raw, { empty_as_nil = false })
+  end
   if raw == nil then return "" end
-  local s = tostring(raw)
-  s = s:gsub("\r", ""):gsub("\n", "")
-  s = s:gsub("^%s+", ""):gsub("%s+$", "")
-  if #s >= 2 then
-    local first = s:sub(1, 1)
-    local last = s:sub(-1)
-    if (first == '"' and last == '"') or (first == "'" and last == "'") then
-      s = s:sub(2, -2)
-      s = s:gsub("^%s+", ""):gsub("%s+$", "")
-    end
-  end
-  if s ~= "" then
-    local drive = s:match("^([A-Za-z]:)[/\\]?$")
-    if drive then
-      s = drive .. sep
-    else
-      s = s:gsub("[/\\]+$", "")
-    end
-  end
-  return s
+  return tostring(raw)
 end
 
 local function ensure_reaimgui_ctx()
@@ -788,6 +728,215 @@ local function filter_pack_set_single(pack_id)
   filter_pack_ids_invalidate_membership_cache()
 end
 
+local function init_manage_state(persisted_splice_db_path)
+  return {
+    root_path_input = "",
+    splice_db_path_input = persisted_splice_db_path,
+    splice_relink_folder_input = "",
+    splice_relink_roots = {},
+    splice_relink_last_report = nil,
+    focus_root_input_once = false,
+    focus_splice_db_input_once = false,
+    show_roots_panel = false,
+    notice = "",
+    scan_progress_pct = nil,
+    scan_progress_label = "",
+    scan_runner = nil,
+    scan_progress_window_open = true,
+  }
+end
+
+local function init_ui_state()
+  return {
+    last_toggle_click = {},
+    auto_preview_on_select = true,
+    pack_sort = "name",
+    pack_source_tab = "splice",
+    layout_pack_frac = 0.20,
+    layout_search_frac = 0.24,
+    panel_pack_h_px = nil,
+    panel_search_h_px = nil,
+    panel_list_h_px = nil,
+    panel_detail_h_px = nil,
+    pack_panel_collapsed = false,
+    search_panel_collapsed = false,
+    pack_active_strip_px = 58,
+    sample_sort = { column = "random", asc = true },
+    sample_view_tab = "list",
+    galaxy_zoom = 1.0,
+    galaxy_center_x = 0.5,
+    galaxy_center_y = 0.5,
+    galaxy_embed_preset = "core5",
+    galaxy_embed_profile = "balanced",
+    galaxy_advanced_collapsed = true,
+    galaxy_show_unmapped = true,
+    search_popular_tags_open = false,
+    follow_arrange_selection = false,
+    favorites_only_filter = false,
+    pack_favorites_only_filter = false,
+    match_preview_to_project_bpm = false,
+    match_insert_to_project_bpm = false,
+    cover_auto_download = true,
+    cover_show = true,
+    preview_gain = C.DEFAULT_PREVIEW_GAIN,
+    rate_multiplier = 1.0,
+  }
+end
+
+local function init_runtime_state()
+  return {
+    notice = "",
+    preview_checked = false,
+    preview_available = false,
+    preview_error = "",
+    preview_handle = nil,
+    preview_source = nil,
+    preview_path = nil,
+    preview_sample_bpm = nil,
+    preview_last_playrate = nil,
+    preview_started_at = nil,
+    preview_duration_sec = nil,
+    dnd_drag_path = nil,
+    dnd_drag_name = nil,
+    dnd_drag_bpm = nil,
+    dnd_drag_type = nil,
+    dnd_last_mouse_down = false,
+    dnd_start_x = 0,
+    dnd_start_y = 0,
+    arrange_follow_last_key = nil,
+    pending_arrange_sample_id = nil,
+    last_selected_sample_id = nil,
+    selected_sample_snapshot = nil,
+    dnd_max_dist2 = 0,
+    dnd_warned_no_js_api = false,
+    wave_screen_rect = nil,
+    wf_capture = false,
+    wf_last_mouse_down = false,
+    wf_path = nil,
+    wf_name = nil,
+    wf_start_mx = 0,
+    wf_start_my = 0,
+    wave_scrub_ratio = nil,
+    preview_offset_sec = nil,
+    preview_full_length_sec = nil,
+    panel_split_inited = false,
+    split_grab = nil,
+    cover_art = {
+      by_pack = {},
+      queue = {},
+      ctx_ref = nil,
+      max_textures = 24,
+    },
+    sample_row_clipper = nil,
+    pack_row_clipper = nil,
+    galaxy_points_cache = nil,
+    galaxy_pan_active = false,
+    galaxy_pan_last_mx = nil,
+    galaxy_pan_last_my = nil,
+    galaxy_trail_segments = {},
+    galaxy_paint_drag = false,
+    galaxy_paint_last_row = nil,
+    galaxy_paint_last_mx = nil,
+    galaxy_paint_last_my = nil,
+    selection_anchor_row_idx = nil,
+    last_sample_filter_signature = nil,
+    edit_sample_id = nil,
+    edit_bpm_input = "",
+    edit_key_input = "",
+    edit_popup_open = false,
+    edit_popup_ids = nil,
+    edit_popup_sample_id = nil,
+    edit_popup_snapshot = nil,
+    edit_popup_form_sample_id = nil,
+    edit_popup_form_key = nil,
+    edit_popup_bpm_input = "",
+    edit_popup_key_root = "C",
+    edit_popup_key_mode = "none",
+    edit_popup_tag_input = "",
+    preview_skip_cache_by_path = {},
+    preview_skip_cache_order = {},
+    pack_bulk_tag_open = false,
+    pack_bulk_tag_pack_id = nil,
+    pack_bulk_tag_pack_name = nil,
+    pack_bulk_tag_input = "",
+    detail_cache_sample_id = nil,
+    detail_cache_path = nil,
+    detail_cache_path_changed_at = nil,
+    detail_cache_peaks = nil,
+    detail_cache_peaks_quality = nil,
+    detail_cache_tags = nil,
+    ui_state_last_saved_ts = nil,
+    dock_restore_pending = false,
+    persisted_dock_id = nil,
+    dock_restore_attempts = 0,
+    main_window_dock_id_for_persist = nil,
+    main_window_size_seeded = false,
+    perf_enabled = get_extstate_bool("ui_perf_overlay", false),
+    perf_last_report_at = nil,
+    perf_last_report = "",
+    perf_acc = {
+      frames = 0,
+      tick_scan = 0,
+      reload_samples = 0,
+      prewarm_galaxy = 0,
+      tick_gfr = 0,
+      draw_pack = 0,
+      draw_search = 0,
+      draw_detail = 0,
+    },
+    pack_lists_reload_requested = false,
+    pack_display_name_by_id = nil,
+    perf_ext_poll_at = 0,
+    heartbeat_write_last = nil,
+    tag_sugg_cache_key = nil,
+    tag_sugg_cache_rows = nil,
+    tag_sugg_cache_at = nil,
+    tag_pop_cache_key = nil,
+    tag_pop_cache_rows = nil,
+    tag_pop_cache_at = nil,
+    tag_sugg_debounce_key = nil,
+    tag_sugg_debounce_until = nil,
+    tag_filter_input_reset_id = 0,
+    pack_filtered_cache = {},
+    filter_pack_id_set = nil,
+    samples_reload_debounce_sig = nil,
+    samples_reload_debounce_until = nil,
+    galaxy_low_budget_frames = 0,
+    row_idx_by_sample_id = nil,
+    path_exists_cache = nil,
+    detail_cache_next_quick_retry_at = nil,
+    detail_cache_next_full_retry_at = nil,
+  }
+end
+
+local function apply_persisted_ui_from_extstate()
+  if not state then return end
+  state.ui.pack_panel_collapsed = get_extstate_bool(XS.ui_pack_collapsed, state.ui.pack_panel_collapsed)
+  state.ui.search_panel_collapsed = get_extstate_bool(XS.ui_search_collapsed, state.ui.search_panel_collapsed)
+  state.ui.panel_pack_h_px = get_extstate_number(XS.ui_pack_h) or state.ui.panel_pack_h_px
+  state.ui.panel_search_h_px = get_extstate_number(XS.ui_search_h) or state.ui.panel_search_h_px
+  state.ui.panel_list_h_px = get_extstate_number(XS.ui_list_h) or state.ui.panel_list_h_px
+  state.ui.preview_gain = get_extstate_number(XS.ui_preview_gain) or state.ui.preview_gain
+  state.ui.rate_multiplier = get_extstate_number("ui_rate_multiplier") or state.ui.rate_multiplier
+  state.ui.match_preview_to_project_bpm = get_extstate_bool(XS.ui_match_preview_bpm, state.ui.match_preview_to_project_bpm)
+  state.ui.match_insert_to_project_bpm = get_extstate_bool(XS.ui_match_insert_bpm, state.ui.match_insert_to_project_bpm)
+  state.manage.splice_relink_roots = get_persisted_splice_relink_roots()
+  state.ui.preview_gain = math.max(0, math.min(2, tonumber(state.ui.preview_gain) or C.DEFAULT_PREVIEW_GAIN))
+  do
+    local v = tonumber(state.ui.rate_multiplier) or 1.0
+    if v < 0.25 then v = 0.25 end
+    if v > 4.0 then v = 4.0 end
+    state.ui.rate_multiplier = v
+  end
+  state.runtime.persisted_dock_id = get_extstate_number(XS.ui_dock_id)
+  if state.runtime.persisted_dock_id and state.runtime.persisted_dock_id > 0 then
+    state.runtime.dock_restore_pending = true
+  end
+  if state.ui.panel_pack_h_px ~= nil and state.ui.panel_search_h_px ~= nil then
+    state.runtime.panel_split_inited = true
+  end
+end
+
 local function init_state()
   local persisted_splice_db_path = get_persisted_splice_db_path()
   state = {
@@ -837,217 +986,14 @@ local function init_state()
       other = {},
     },
 
-    manage = {
-      -- NOTE: kept for UI state; used later for root management
-      root_path_input = "",
-      splice_db_path_input = persisted_splice_db_path,
-      splice_relink_folder_input = "",
-      splice_relink_roots = {},
-      splice_relink_last_report = nil,
-      focus_root_input_once = false,
-      focus_splice_db_input_once = false,
-      show_roots_panel = false,
-      notice = "",
-      scan_progress_pct = nil,
-      scan_progress_label = "",
-      scan_runner = nil,
-      scan_progress_window_open = true,
-    },
+    manage = init_manage_state(persisted_splice_db_path),
 
-    ui = {
-      last_toggle_click = {},
-      auto_preview_on_select = true,
-      pack_sort = "name", -- "name" | "count_desc" | "count_asc"
-      -- pack list: "splice" | "other" (tab or button toggle when TabBar unavailable)
-      pack_source_tab = "splice",
-      -- used once to seed pixel heights; then drag splitters adjust pixels
-      layout_pack_frac = 0.20,
-      layout_search_frac = 0.24,
-      panel_pack_h_px = nil,
-      panel_search_h_px = nil,
-      panel_list_h_px = nil,
-      panel_detail_h_px = nil,
-      pack_panel_collapsed = false,
-      search_panel_collapsed = false,
-      -- fixed height for active-pack strip (reduces list jump when chips change)
-      pack_active_strip_px = 58,
-      -- sample table: click header to sort; same column again toggles asc/desc
-      sample_sort = { column = "random", asc = true }, -- column: filename | bpm | key | random
-      sample_view_tab = "list", -- "list" | "galaxy"
-      galaxy_zoom = 1.0,
-      galaxy_center_x = 0.5,
-      galaxy_center_y = 0.5,
-      galaxy_embed_preset = "core5",
-      galaxy_embed_profile = "balanced",
-      galaxy_advanced_collapsed = true,
-      galaxy_show_unmapped = true,
-      search_popular_tags_open = false,
-      follow_arrange_selection = false,
-      favorites_only_filter = false,
-      pack_favorites_only_filter = false,
-      match_preview_to_project_bpm = false,
-      match_insert_to_project_bpm = false,
-      -- Cover thumbnails: always fetch + render (automatic).
-      cover_auto_download = true,
-      cover_show = true,
-      preview_gain = C.DEFAULT_PREVIEW_GAIN,
-      rate_multiplier = 1.0,
-    },
+    ui = init_ui_state(),
 
-    runtime = {
-      notice = "",
-      preview_checked = false,
-      preview_available = false,
-      preview_error = "",
-      preview_handle = nil,
-      preview_source = nil,
-      preview_path = nil,
-      preview_sample_bpm = nil,
-      preview_last_playrate = nil,
-      preview_started_at = nil,
-      preview_duration_sec = nil,
-      dnd_drag_path = nil,
-      dnd_drag_name = nil,
-      dnd_drag_bpm = nil,
-      dnd_drag_type = nil,
-      dnd_last_mouse_down = false,
-      dnd_start_x = 0,
-      dnd_start_y = 0,
-      arrange_follow_last_key = nil,
-      pending_arrange_sample_id = nil,
-      -- Keep selected sample identity across filter/sort reloads.
-      last_selected_sample_id = nil,
-      -- Keep detail context even when selected sample is filtered out of current rows.
-      selected_sample_snapshot = nil,
-      dnd_max_dist2 = 0,
-      dnd_warned_no_js_api = false,
-      -- waveform hit rect (screen coords, same as GetMousePosition); set in draw_detail_section
-      wave_screen_rect = nil,
-      wf_capture = false,
-      wf_last_mouse_down = false,
-      wf_path = nil,
-      wf_name = nil,
-      wf_start_mx = 0,
-      wf_start_my = 0,
-      wave_scrub_ratio = nil,
-      preview_offset_sec = nil,
-      preview_full_length_sec = nil,
-      panel_split_inited = false,
-      --- { which="pack"|"search", start_my=number, start_h=number, use_reaper_mouse=bool }
-      split_grab = nil,
-      -- Splice pack cover thumbnails (texture cache; keyed by pack_id)
-      cover_art = {
-        by_pack = {},
-        queue = {},
-        ctx_ref = nil,
-        max_textures = 24,
-      },
-      sample_row_clipper = nil,
-      pack_row_clipper = nil,
-      galaxy_points_cache = nil,
-      galaxy_pan_active = false,
-      galaxy_pan_last_mx = nil,
-      galaxy_pan_last_my = nil,
-      galaxy_trail_segments = {},
-      galaxy_paint_drag = false,
-      galaxy_paint_last_row = nil,
-      galaxy_paint_last_mx = nil,
-      galaxy_paint_last_my = nil,
-      selection_anchor_row_idx = nil,
-      last_sample_filter_signature = nil,
-      edit_sample_id = nil,
-      edit_bpm_input = "",
-      edit_key_input = "",
-      edit_popup_open = false,
-      edit_popup_ids = nil,
-      edit_popup_sample_id = nil,
-      edit_popup_snapshot = nil,
-      edit_popup_form_sample_id = nil,
-      edit_popup_form_key = nil,
-      edit_popup_bpm_input = "",
-      edit_popup_key_root = "C",
-      edit_popup_key_mode = "none",
-      edit_popup_tag_input = "",
-      preview_skip_cache_by_path = {},
-      preview_skip_cache_order = {},
-      pack_bulk_tag_open = false,
-      pack_bulk_tag_pack_id = nil,
-      pack_bulk_tag_pack_name = nil,
-      pack_bulk_tag_input = "",
-      detail_cache_sample_id = nil,
-      detail_cache_path = nil,
-      detail_cache_path_changed_at = nil,
-      detail_cache_peaks = nil,
-      detail_cache_peaks_quality = nil, -- nil | "quick" | "full"
-      detail_cache_tags = nil,
-      ui_state_last_saved_ts = nil,
-      dock_restore_pending = false,
-      persisted_dock_id = nil,
-      dock_restore_attempts = 0,
-      main_window_dock_id_for_persist = nil,
-      main_window_size_seeded = false,
-      perf_enabled = get_extstate_bool("ui_perf_overlay", false),
-      perf_last_report_at = nil,
-      perf_last_report = "",
-      perf_acc = {
-        frames = 0,
-        tick_scan = 0,
-        reload_samples = 0,
-        prewarm_galaxy = 0,
-        tick_gfr = 0,
-        draw_pack = 0,
-        draw_search = 0,
-        draw_detail = 0,
-      },
-      pack_lists_reload_requested = false,
-      pack_display_name_by_id = nil,
-      perf_ext_poll_at = 0,
-      heartbeat_write_last = nil,
-      tag_sugg_cache_key = nil,
-      tag_sugg_cache_rows = nil,
-      tag_sugg_cache_at = nil,
-      tag_pop_cache_key = nil,
-      tag_pop_cache_rows = nil,
-      tag_pop_cache_at = nil,
-      tag_sugg_debounce_key = nil,
-      tag_sugg_debounce_until = nil,
-      tag_filter_input_reset_id = 0,
-      pack_filtered_cache = {},
-      filter_pack_id_set = nil,
-      samples_reload_debounce_sig = nil,
-      samples_reload_debounce_until = nil,
-      galaxy_low_budget_frames = 0,
-      row_idx_by_sample_id = nil,
-      path_exists_cache = nil,
-      detail_cache_next_quick_retry_at = nil,
-      detail_cache_next_full_retry_at = nil,
-    },
+    runtime = init_runtime_state(),
   }
 
-  state.ui.pack_panel_collapsed = get_extstate_bool(XS.ui_pack_collapsed, state.ui.pack_panel_collapsed)
-  state.ui.search_panel_collapsed = get_extstate_bool(XS.ui_search_collapsed, state.ui.search_panel_collapsed)
-  state.ui.panel_pack_h_px = get_extstate_number(XS.ui_pack_h) or state.ui.panel_pack_h_px
-  state.ui.panel_search_h_px = get_extstate_number(XS.ui_search_h) or state.ui.panel_search_h_px
-  state.ui.panel_list_h_px = get_extstate_number(XS.ui_list_h) or state.ui.panel_list_h_px
-  state.ui.preview_gain = get_extstate_number(XS.ui_preview_gain) or state.ui.preview_gain
-  state.ui.rate_multiplier = get_extstate_number("ui_rate_multiplier") or state.ui.rate_multiplier
-  state.ui.match_preview_to_project_bpm = get_extstate_bool(XS.ui_match_preview_bpm, state.ui.match_preview_to_project_bpm)
-  state.ui.match_insert_to_project_bpm = get_extstate_bool(XS.ui_match_insert_bpm, state.ui.match_insert_to_project_bpm)
-  state.manage.splice_relink_roots = get_persisted_splice_relink_roots()
-  state.ui.preview_gain = math.max(0, math.min(2, tonumber(state.ui.preview_gain) or C.DEFAULT_PREVIEW_GAIN))
-  do
-    local v = tonumber(state.ui.rate_multiplier) or 1.0
-    if v < 0.25 then v = 0.25 end
-    if v > 4.0 then v = 4.0 end
-    state.ui.rate_multiplier = v
-  end
-  state.runtime.persisted_dock_id = get_extstate_number(XS.ui_dock_id)
-  if state.runtime.persisted_dock_id and state.runtime.persisted_dock_id > 0 then
-    state.runtime.dock_restore_pending = true
-  end
-  if state.ui.panel_pack_h_px ~= nil and state.ui.panel_search_h_px ~= nil then
-    state.runtime.panel_split_inited = true
-  end
+  apply_persisted_ui_from_extstate()
 
   if db_manager and type(db_manager.init) == "function" and type(db_manager.get_status) == "function" then
     local ok = db_manager.init()
@@ -1102,79 +1048,6 @@ local function init_state()
     })
   end
 
-  if ui_search and type(ui_search.setup) == "function" then
-    ui_search.setup({
-      r = r,
-      ctx = ctx,
-      state = state,
-      sqlite_store = sqlite_store,
-      safe_push_font = safe_push_font,
-      safe_pop_font = safe_pop_font,
-      calc_text_w = calc_text_w,
-      should_accept_toggle_click = should_accept_toggle_click,
-      parse_optional_number = tag_ops.parse_optional_number,
-      ui_input_text_with_hint = ui_input_text_with_hint,
-      window_flag_noresize = window_flag_noresize,
-      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
-      filter_tags_has = tag_ops.filter_tags_has,
-      filter_tags_clear_all = tag_ops.filter_tags_clear_all,
-      filter_tags_remove_at = tag_ops.filter_tags_remove_at,
-      filter_tags_remove_value = tag_ops.filter_tags_remove_value,
-      filter_tags_add_unique = tag_ops.filter_tags_add_unique,
-      filter_tags_exclude_has = tag_ops.filter_tags_exclude_has,
-      filter_tags_exclude_remove_at = tag_ops.filter_tags_exclude_remove_at,
-      filter_tags_exclude_remove_value = tag_ops.filter_tags_exclude_remove_value,
-      filter_tags_exclude_add_unique = tag_ops.filter_tags_exclude_add_unique,
-      draw_text_only_button = draw_text_only_button,
-      content_width = content_width,
-      tag_chip_label_short = tag_chip_label_short,
-      draw_wrapped_tag_chips = draw_wrapped_tag_chips,
-      calc_text_w_fallback = 42,
-      tag_chip_min_w = TAG_CHIP_MIN_W,
-      tag_chip_max_w_filter = TAG_CHIP_MAX_W_FILTER,
-      font_small = font_small,
-      get_project_bpm = get_project_bpm,
-      search_ui = C.SEARCH_UI,
-    })
-  end
-
-  if ui_pack and type(ui_pack.setup) == "function" then
-    ui_pack.setup({
-      r = r,
-      ctx = ctx,
-      state = state,
-      sqlite_store = sqlite_store,
-      cover_art = cover_art,
-      scan_controller = scan_controller,
-      font_small = font_small,
-      active_pack_strip_h = C.ACTIVE_PACK_STRIP_H,
-      active_pack_chip_pad_y = C.ACTIVE_PACK_CHIP_PAD_Y,
-      active_pack_scrollbar_size = C.ACTIVE_PACK_SCROLLBAR_SIZE,
-      pack_list_row_min_h = C.PACK_LIST_ROW_MIN_H,
-      pack_list_thumb = C.PACK_LIST_THUMB,
-      content_width = content_width,
-      safe_push_font = safe_push_font,
-      safe_pop_font = safe_pop_font,
-      window_flag_noresize = window_flag_noresize,
-      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
-      window_flag_always_vertical_scrollbar = window_flag_always_vertical_scrollbar,
-      ui_input_text_with_hint = ui_input_text_with_hint,
-      draw_rows_virtualized = draw_rows_virtualized,
-      filter_pack_ids_has = filter_pack_ids_has,
-      filter_pack_ids_toggle = filter_pack_ids_toggle,
-      filter_pack_ids_clear = filter_pack_ids_clear,
-      filter_pack_ids_remove_at = filter_pack_ids_remove_at,
-      pack_display_name_by_id = pack_display_name_by_id,
-      reload_pack_lists = reload_pack_lists,
-      set_runtime_notice = set_runtime_notice,
-      sanitize_root_path_input = sanitize_root_path_input,
-      set_persisted_splice_db_path = set_persisted_splice_db_path,
-      set_persisted_splice_relink_roots = set_persisted_splice_relink_roots,
-      pack_ui = C.PACK_UI,
-      use_native_tabs = supports_native_tab_colors(),
-    })
-  end
-
   -- Placeholder rows if store isn't ready yet
   if not state.store.available then
     for i = 1, 25 do
@@ -1216,117 +1089,25 @@ local function file_exists_cached(path)
 end
 
 local function get_detail_waveform_play_ratio(row)
-  if not row or not row.path then return nil end
-  local sr = tonumber(state.runtime.wave_scrub_ratio)
-  if sr then
-    if sr < 0 then sr = 0 end
-    if sr > 1 then sr = 1 end
-    return sr
-  end
-  if not state.playing or state.runtime.preview_path ~= row.path then return nil end
-  local full = tonumber(state.runtime.preview_full_length_sec)
-  local off = tonumber(state.runtime.preview_offset_sec) or 0
-  if full and full > 0 then
-    local now = (r.time_precise and r.time_precise()) or os.clock()
-    local start_t = tonumber(state.runtime.preview_started_at) or now
-    local elapsed = now - start_t
-    local playrate = tonumber(state.runtime.preview_last_playrate) or 1.0
-    if playrate < 0.1 then playrate = 0.1 end
-    if playrate > 4.0 then playrate = 4.0 end
-    local pos = off + (elapsed * playrate)
-    local pr = pos / full
-    if pr < 0 then pr = 0 end
-    if pr > 1 then pr = 1 end
-    return pr
-  end
-  local dur = tonumber(state.runtime.preview_duration_sec)
-  if not dur or dur <= 0 then return nil end
-  local now = (r.time_precise and r.time_precise()) or os.clock()
-  local start_t = tonumber(state.runtime.preview_started_at) or now
-  local elapsed = now - start_t
-  local pr = elapsed / dur
-  if pr < 0 then pr = 0 end
-  if pr > 1 then pr = 1 end
-  return pr
-end
-
-local function check_preview_api_available()
-  if state.runtime.preview_checked then
-    return state.runtime.preview_available
-  end
-  state.runtime.preview_checked = true
-  state.runtime.preview_available =
-    (type(r.CF_CreatePreview) == "function")
-    and (type(r.CF_Preview_Play) == "function")
-    and (type(r.CF_Preview_Stop) == "function")
-    and (type(r.PCM_Source_CreateFromFile) == "function")
-  if not state.runtime.preview_available then
-    state.runtime.preview_error = "Preview API is unavailable. Check SWS and REAPER PCM_Source API."
-  else
-    state.runtime.preview_error = ""
-  end
-  return state.runtime.preview_available
+  if ui_preview then return ui_preview.get_detail_waveform_play_ratio(row) end
+  return nil
 end
 
 --- @param keep_wf_scrub boolean|nil if true, keep waveform drag state and wave_scrub_ratio (scrub: audio off until mouse up)
 local function stop_preview(keep_wf_scrub)
-  local h = state.runtime.preview_handle
-  local src = state.runtime.preview_source
-  if h and type(r.CF_Preview_Stop) == "function" then
-    pcall(function() r.CF_Preview_Stop(h) end)
-  end
-  if h and type(r.CF_DestroyPreview) == "function" then
-    pcall(function() r.CF_DestroyPreview(h) end)
-  end
-  if src and type(r.PCM_Source_Destroy) == "function" then
-    pcall(function() r.PCM_Source_Destroy(src) end)
-  end
-  state.runtime.preview_handle = nil
-  state.runtime.preview_source = nil
-  state.runtime.preview_path = nil
-  state.runtime.preview_sample_bpm = nil
-  state.runtime.preview_last_playrate = nil
-  state.runtime.preview_started_at = nil
-  state.runtime.preview_duration_sec = nil
-  state.runtime.preview_offset_sec = nil
-  state.runtime.preview_full_length_sec = nil
-  if not keep_wf_scrub then
-    state.runtime.wave_scrub_ratio = nil
-    state.runtime.wf_capture = false
-    state.runtime.wf_path = nil
-    state.runtime.wf_name = nil
-  end
-  state.playing = false
+  if ui_preview then return ui_preview.stop_preview(keep_wf_scrub) end
 end
 
 local function refresh_preview_state()
-  if not state.playing then return end
-  local handle = state.runtime.preview_handle
-  if not handle then
-    state.playing = false
-    return
-  end
-  local now = (r.time_precise and r.time_precise()) or os.clock()
-  local started_at = tonumber(state.runtime.preview_started_at) or now
-  local elapsed = now - started_at
-  local playrate = tonumber(state.runtime.preview_last_playrate) or 1.0
-  if playrate < 0.1 then playrate = 0.1 end
-  if playrate > 4.0 then playrate = 4.0 end
-  local full = tonumber(state.runtime.preview_full_length_sec)
-  if full and full > 0 then
-    local off = tonumber(state.runtime.preview_offset_sec) or 0
-    if (off + (elapsed * playrate)) >= (full + 0.03) then
-      stop_preview()
-    end
-    return
-  end
-  local duration = tonumber(state.runtime.preview_duration_sec)
-  if not duration or duration <= 0 then
-    return
-  end
-  if (elapsed * playrate) >= (duration + 0.03) then
-    stop_preview()
-  end
+  if ui_preview then return ui_preview.refresh_preview_state() end
+end
+
+local function preview_seek_or_restart_from_ratio(path, label, ratio, quiet)
+  if ui_preview then return ui_preview.preview_seek_or_restart_from_ratio(path, label, ratio, quiet) end
+end
+
+local function play_selected_sample_preview()
+  if ui_preview then return ui_preview.play_selected_sample_preview() end
 end
 
 local function get_selected_sample_row()
@@ -1812,15 +1593,6 @@ local function prewarm_galaxy_points_cache_step()
   end
 end
 
-local function pcm_source_length_sec(source)
-  if not source or type(r.GetMediaSourceLength) ~= "function" then return nil end
-  local ok_len, len = pcall(function()
-    return r.GetMediaSourceLength(source)
-  end)
-  if ok_len and type(len) == "number" and len > 0 then return len end
-  return nil
-end
-
 local function parse_sample_bpm(value)
   if not key_bpm then return nil end
   return key_bpm.parse_sample_bpm(value)
@@ -1887,1007 +1659,6 @@ local function calc_bpm_match_playrate(sample_bpm)
   return rate
 end
 
-local function apply_preview_playrate(handle, sample_bpm)
-  if not handle or type(r.CF_Preview_SetValue) ~= "function" then return end
-  local playrate = 1.0
-  local preserve_pitch = 0
-  if state.ui.match_preview_to_project_bpm == true then
-    local matched = calc_bpm_match_playrate(sample_bpm)
-    if matched then
-      playrate = matched
-      preserve_pitch = 1
-    end
-  end
-  local mul = tonumber(state.ui.rate_multiplier) or 1.0
-  if mul < 0.25 then mul = 0.25 end
-  if mul > 4.0 then mul = 4.0 end
-  if math.abs(mul - 1.0) > 0.0001 then
-    preserve_pitch = 0
-  end
-  playrate = playrate * mul
-  if playrate < 0.1 then playrate = 0.1 end
-  if playrate > 4.0 then playrate = 4.0 end
-  local last = tonumber(state.runtime.preview_last_playrate)
-  if last and math.abs(last - playrate) < 0.0001 then
-    return
-  end
-  pcall(function()
-    r.CF_Preview_SetValue(handle, "D_PLAYRATE", playrate)
-  end)
-  -- Preserve pitch for BPM match only (mul==1); allow pitch change when mul!=1.
-  pcall(function()
-    r.CF_Preview_SetValue(handle, "B_PPITCH", preserve_pitch)
-  end)
-  state.runtime.preview_last_playrate = playrate
-end
-
---- offset_sec: position in file (seconds) to start playback from (requires CF_Preview_SetValue when > 0).
-local function start_preview_playing(path, label, offset_sec, sample_bpm)
-  offset_sec = math.max(0, tonumber(offset_sec) or 0)
-  if not path or path == "" then
-    set_runtime_notice("Preview failed: path empty.")
-    stop_preview()
-    state.playing = false
-    return false
-  end
-  if not file_exists(path) then
-    set_runtime_notice("Preview failed: file not found.")
-    stop_preview()
-    state.playing = false
-    return false
-  end
-  if not check_preview_api_available() then
-    set_runtime_notice(state.runtime.preview_error)
-    stop_preview()
-    state.playing = false
-    return false
-  end
-
-  local ok_src, source_or_err = pcall(function()
-    return r.PCM_Source_CreateFromFile(path)
-  end)
-  if not ok_src or not source_or_err then
-    set_runtime_notice("Preview source create failed: " .. tostring(source_or_err))
-    stop_preview()
-    state.playing = false
-    return false
-  end
-
-  local source = source_or_err
-  local full = pcm_source_length_sec(source)
-  if not full then
-    if type(r.PCM_Source_Destroy) == "function" then
-      pcall(function() r.PCM_Source_Destroy(source) end)
-    end
-    set_runtime_notice("Preview failed: could not read media length.")
-    stop_preview()
-    state.playing = false
-    return false
-  end
-  if offset_sec > full then offset_sec = full end
-
-  stop_preview()
-
-  local ok_create, handle_or_err = pcall(function()
-    return r.CF_CreatePreview(source)
-  end)
-  if not ok_create or not handle_or_err then
-    if type(r.PCM_Source_Destroy) == "function" then
-      pcall(function() r.PCM_Source_Destroy(source) end)
-    end
-    set_runtime_notice("Preview create failed: " .. tostring(handle_or_err))
-    state.playing = false
-    return false
-  end
-
-  local handle = handle_or_err
-  state.runtime.preview_last_playrate = nil
-  local gain = tonumber(state.ui.preview_gain) or C.DEFAULT_PREVIEW_GAIN
-  if gain < 0 then gain = 0 end
-  if gain > 2 then gain = 2 end
-  state.ui.preview_gain = gain
-  if type(r.CF_Preview_SetValue) == "function" then
-    pcall(function()
-      r.CF_Preview_SetValue(handle, "D_VOLUME", gain)
-    end)
-    apply_preview_playrate(handle, sample_bpm)
-  end
-  local use_offset = offset_sec
-  if use_offset > 0 and type(r.CF_Preview_SetValue) ~= "function" then
-    use_offset = 0
-    set_runtime_notice("Scrub/seek needs CF_Preview_SetValue (SWS). Playing from start.")
-  elseif use_offset > 0 then
-    pcall(function()
-      r.CF_Preview_SetValue(handle, "D_POSITION", use_offset)
-    end)
-  end
-
-  local ok_play, play_err = pcall(function()
-    r.CF_Preview_Play(handle)
-  end)
-  if not ok_play then
-    set_runtime_notice("Preview play failed: " .. tostring(play_err))
-    stop_preview()
-    return false
-  end
-
-  local now = (r.time_precise and r.time_precise()) or os.clock()
-  state.runtime.preview_source = source
-  state.runtime.preview_handle = handle
-  state.runtime.preview_path = path
-  state.runtime.preview_sample_bpm = parse_sample_bpm(sample_bpm)
-  state.runtime.preview_full_length_sec = full
-  state.runtime.preview_offset_sec = use_offset
-  state.runtime.preview_started_at = now
-  state.runtime.preview_duration_sec = math.max(0, full - use_offset)
-  state.playing = true
-  return true
-end
-
-local function preview_seek_or_restart_from_ratio(path, label, ratio, quiet)
-  ratio = math.max(0, math.min(1, tonumber(ratio) or 0))
-  if not path or path == "" then return end
-  if not check_preview_api_available() then return end
-
-  local full = tonumber(state.runtime.preview_full_length_sec)
-  if (not full or full <= 0) or state.runtime.preview_path ~= path then
-    local ok_src, src = pcall(function()
-      return r.PCM_Source_CreateFromFile(path)
-    end)
-    if ok_src and src then
-      full = pcm_source_length_sec(src)
-      if type(r.PCM_Source_Destroy) == "function" then
-        pcall(function() r.PCM_Source_Destroy(src) end)
-      end
-    end
-  end
-  if not full or full <= 0 then return end
-
-  local off = ratio * full
-  local now = (r.time_precise and r.time_precise()) or os.clock()
-  local same = state.playing
-    and state.runtime.preview_handle
-    and state.runtime.preview_path == path
-
-  if same and type(r.CF_Preview_SetValue) == "function" then
-    apply_preview_playrate(state.runtime.preview_handle, state.runtime.preview_sample_bpm)
-    pcall(function()
-      r.CF_Preview_SetValue(state.runtime.preview_handle, "D_POSITION", off)
-    end)
-    pcall(function()
-      r.CF_Preview_Play(state.runtime.preview_handle)
-    end)
-    state.runtime.preview_offset_sec = off
-    state.runtime.preview_full_length_sec = full
-    state.runtime.preview_started_at = now
-    state.runtime.preview_duration_sec = math.max(0, full - off)
-    state.playing = true
-    return
-  end
-
-  local bpm_for_restart = state.runtime.preview_sample_bpm
-  local cur = get_selected_sample_row()
-  if cur and cur.path == path then
-    bpm_for_restart = cur.bpm
-  end
-  start_preview_playing(path, (not quiet) and label or nil, off, bpm_for_restart)
-end
-
-local function play_selected_sample_preview()
-  local row = get_selected_sample_row()
-  if not row then
-    set_runtime_notice("No sample selected.")
-    stop_preview()
-    state.playing = false
-    return
-  end
-  local path = row.path
-  if not path or path == "" then
-    set_runtime_notice("Selected sample path is empty.")
-    stop_preview()
-    state.playing = false
-    return
-  end
-  local skip_sec = 0
-  if waveform and type(waveform.leading_silence_skip_sec) == "function" then
-    local cache_by_path = state.runtime.preview_skip_cache_by_path
-    local cache_order = state.runtime.preview_skip_cache_order
-    if type(cache_by_path) ~= "table" then
-      cache_by_path = {}
-      state.runtime.preview_skip_cache_by_path = cache_by_path
-    end
-    if type(cache_order) ~= "table" then
-      cache_order = {}
-      state.runtime.preview_skip_cache_order = cache_order
-    end
-    local cached = cache_by_path[path]
-    if type(cached) == "number" then
-      skip_sec = math.max(0, cached)
-    else
-      local ok_skip, s = pcall(function()
-        return waveform.leading_silence_skip_sec(path)
-      end)
-      if ok_skip and type(s) == "number" and s > 0 then
-        skip_sec = s
-      end
-      cache_by_path[path] = skip_sec
-      cache_order[#cache_order + 1] = path
-      local max_entries = 512
-      while #cache_order > max_entries do
-        local old = table.remove(cache_order, 1)
-        if old then
-          cache_by_path[old] = nil
-        end
-      end
-    end
-  end
-  start_preview_playing(path, row.filename or path, skip_sec, row.bpm)
-end
-
-local insert_path_at_cursor = nil
-
-local function copy_selected_sample_as_item_to_clipboard()
-  local row = get_selected_sample_row()
-  if not row then
-    set_runtime_notice("No sample selected to copy item.")
-    return
-  end
-  local path = row.path
-  if not path or path == "" then
-    set_runtime_notice("Copy failed: sample path is empty.")
-    return
-  end
-  if not file_exists(path) then
-    set_runtime_notice("Copy failed: file not found.")
-    return
-  end
-
-  local target_track = nil
-  if type(r.GetSelectedTrack) == "function" then
-    target_track = r.GetSelectedTrack(0, 0)
-  end
-  if not target_track and type(r.GetTrack) == "function" then
-    target_track = r.GetTrack(0, 0)
-  end
-  if not target_track then
-    set_runtime_notice("Copy failed: no target track available.")
-    return
-  end
-
-  local selected_tracks = {}
-  if type(r.CountSelectedTracks) == "function" and type(r.GetSelectedTrack) == "function" then
-    local nst = tonumber(r.CountSelectedTracks(0)) or 0
-    for i = 0, nst - 1 do
-      local tr = r.GetSelectedTrack(0, i)
-      if tr then selected_tracks[#selected_tracks + 1] = tr end
-    end
-  end
-
-  local selected_items = {}
-  if type(r.CountSelectedMediaItems) == "function" and type(r.GetSelectedMediaItem) == "function" then
-    local nsi = tonumber(r.CountSelectedMediaItems(0)) or 0
-    for i = 0, nsi - 1 do
-      local it = r.GetSelectedMediaItem(0, i)
-      if it then selected_items[#selected_items + 1] = it end
-    end
-  end
-
-  local existing_by_ptr = {}
-  local pre_count = 0
-  if type(r.CountTrackMediaItems) == "function" and type(r.GetTrackMediaItem) == "function" then
-    pre_count = tonumber(r.CountTrackMediaItems(target_track)) or 0
-    for i = 0, pre_count - 1 do
-      local it = r.GetTrackMediaItem(target_track, i)
-      if it then existing_by_ptr[tostring(it)] = true end
-    end
-  end
-
-  if type(r.SetOnlyTrackSelected) == "function" then
-    pcall(function() r.SetOnlyTrackSelected(target_track) end)
-  end
-
-  local ok_insert = pcall(function()
-    r.InsertMedia(path, 0)
-  end)
-  if not ok_insert then
-    set_runtime_notice("Copy failed: temporary insert failed.")
-    return
-  end
-
-  local inserted_items = {}
-  if type(r.CountTrackMediaItems) == "function" and type(r.GetTrackMediaItem) == "function" then
-    local post_count = tonumber(r.CountTrackMediaItems(target_track)) or 0
-    for i = 0, post_count - 1 do
-      local it = r.GetTrackMediaItem(target_track, i)
-      if it and not existing_by_ptr[tostring(it)] then
-        inserted_items[#inserted_items + 1] = it
-      end
-    end
-  end
-  if #inserted_items == 0 then
-    set_runtime_notice("Copy failed: could not detect inserted item.")
-    return
-  end
-
-  -- Apply the same post-insert shaping as normal insert flow
-  -- so pasted items keep expected playrate/loop behavior.
-  do
-    local normalized_type = normalize_sample_type(row.type)
-    local loopsrc_value = nil
-    if normalized_type == "oneshot" then
-      loopsrc_value = 0
-    elseif normalized_type == "loop" then
-      loopsrc_value = 1
-    end
-
-    local base_rate = 1.0
-    local preserve_pitch = 0
-    if state.ui.match_insert_to_project_bpm == true then
-      local matched = calc_bpm_match_playrate(row.bpm)
-      if matched then
-        base_rate = matched
-        preserve_pitch = 1
-      end
-    end
-    local mul = tonumber(state.ui.rate_multiplier) or 1.0
-    if mul < 0.25 then mul = 0.25 end
-    if mul > 4.0 then mul = 4.0 end
-    if math.abs(mul - 1.0) > 0.0001 then
-      preserve_pitch = 0
-    end
-    local rate = base_rate * mul
-    if rate < 0.1 then rate = 0.1 end
-    if rate > 4.0 then rate = 4.0 end
-
-    for _, item in ipairs(inserted_items) do
-      local take = (type(r.GetActiveTake) == "function") and r.GetActiveTake(item) or nil
-      if take and type(r.SetMediaItemTakeInfo_Value) == "function" and math.abs(rate - 1.0) > 0.0001 then
-        pcall(function()
-          r.SetMediaItemTakeInfo_Value(take, "D_PLAYRATE", rate)
-        end)
-        pcall(function()
-          r.SetMediaItemTakeInfo_Value(take, "B_PPITCH", preserve_pitch)
-        end)
-        if type(r.GetMediaItemTake_Source) == "function"
-          and type(r.GetMediaSourceLength) == "function"
-          and type(r.SetMediaItemInfo_Value) == "function" then
-          local src = r.GetMediaItemTake_Source(take)
-          if src then
-            local src_len = nil
-            local ok_len, len = pcall(function()
-              return r.GetMediaSourceLength(src)
-            end)
-            if ok_len and type(len) == "number" and len > 0 then
-              src_len = len
-            end
-            if src_len and rate > 0 then
-              local new_item_len = math.max(0.001, src_len / rate)
-              pcall(function()
-                r.SetMediaItemInfo_Value(item, "D_LENGTH", new_item_len)
-              end)
-            end
-          end
-        end
-      end
-      if loopsrc_value ~= nil and type(r.SetMediaItemInfo_Value) == "function" then
-        pcall(function()
-          r.SetMediaItemInfo_Value(item, "B_LOOPSRC", loopsrc_value)
-        end)
-      end
-      if type(r.UpdateItemInProject) == "function" then
-        pcall(function() r.UpdateItemInProject(item) end)
-      end
-    end
-  end
-
-  if type(r.Main_OnCommand) == "function" then
-    -- Unselect all items
-    pcall(function() r.Main_OnCommand(40289, 0) end)
-  end
-  if type(r.SetMediaItemSelected) == "function" then
-    for _, it in ipairs(inserted_items) do
-      pcall(function() r.SetMediaItemSelected(it, true) end)
-    end
-  end
-
-  local copied = false
-  if type(r.Main_OnCommand) == "function" then
-    local ok_copy = pcall(function() r.Main_OnCommand(40057, 0) end)
-    copied = ok_copy == true
-  end
-
-  if type(r.DeleteTrackMediaItem) == "function" then
-    for _, it in ipairs(inserted_items) do
-      pcall(function() r.DeleteTrackMediaItem(target_track, it) end)
-    end
-  end
-
-  if type(r.Main_OnCommand) == "function" then
-    pcall(function() r.Main_OnCommand(40289, 0) end)
-  end
-  if type(r.SetMediaItemSelected) == "function" then
-    for _, it in ipairs(selected_items) do
-      pcall(function() r.SetMediaItemSelected(it, true) end)
-    end
-  end
-  if type(r.SetTrackSelected) == "function" then
-    if type(r.Main_OnCommand) == "function" then
-      pcall(function() r.Main_OnCommand(40297, 0) end) -- Unselect all tracks
-    end
-    for _, tr in ipairs(selected_tracks) do
-      pcall(function() r.SetTrackSelected(tr, true) end)
-    end
-  end
-  if type(r.UpdateArrange) == "function" then
-    pcall(function() r.UpdateArrange() end)
-  end
-
-  if copied then
-    set_runtime_notice("Copied item to REAPER clipboard. Press Ctrl+V to paste.")
-  else
-    set_runtime_notice("Copy failed: REAPER copy command unavailable.")
-  end
-end
-
-local function resolve_insert_target_track(prefer_mouse_point)
-  if prefer_mouse_point and type(r.GetTrackFromPoint) == "function" and type(r.GetMousePosition) == "function" then
-    local mx, my = r.GetMousePosition()
-    local ok_track, track = pcall(function()
-      return r.GetTrackFromPoint(mx, my)
-    end)
-    if ok_track and track then
-      return track
-    end
-    -- D&D drop mode: when mouse-point track is missing, caller may create a track.
-    return nil
-  end
-
-  if type(r.GetSelectedTrack) == "function" then
-    local selected = r.GetSelectedTrack(0, 0)
-    if selected then return selected end
-  end
-  if type(r.GetTrack) == "function" then
-    local first = r.GetTrack(0, 0)
-    if first then return first end
-  end
-  return nil
-end
-
-local function get_track_label(track)
-  if not track then return "unknown track" end
-  local idx = nil
-  if type(r.CSurf_TrackToID) == "function" then
-    idx = r.CSurf_TrackToID(track, false)
-  end
-  if type(idx) == "number" and idx > 0 then
-    return "Track " .. tostring(idx)
-  end
-  return "target track"
-end
-
-local function run_insert_media_on_track(path, target_track, insert_pos_sec)
-  local before_items = {}
-  if target_track and type(r.CountTrackMediaItems) == "function" and type(r.GetTrackMediaItem) == "function" then
-    local cnt = r.CountTrackMediaItems(target_track) or 0
-    for i = 0, cnt - 1 do
-      local it = r.GetTrackMediaItem(target_track, i)
-      if it then
-        before_items[tostring(it)] = true
-      end
-    end
-  end
-  local original_tracks = {}
-  local had_edit_cursor = (type(r.GetCursorPosition) == "function") and (type(r.SetEditCurPos) == "function")
-  local original_cursor = had_edit_cursor and r.GetCursorPosition() or nil
-  if type(r.CountSelectedTracks) == "function" and type(r.GetSelectedTrack) == "function" then
-    local count = r.CountSelectedTracks(0)
-    for i = 0, count - 1 do
-      original_tracks[#original_tracks + 1] = r.GetSelectedTrack(0, i)
-    end
-  end
-
-  local set_ok, set_err = pcall(function()
-    if type(r.SetOnlyTrackSelected) == "function" and target_track then
-      r.SetOnlyTrackSelected(target_track)
-    end
-  end)
-  if not set_ok then
-    return false, set_err
-  end
-
-  if had_edit_cursor and type(insert_pos_sec) == "number" then
-    pcall(function()
-      r.SetEditCurPos(insert_pos_sec, false, false)
-    end)
-  end
-
-  local ok_insert, insert_err = pcall(function()
-    r.InsertMedia(path, 0)
-  end)
-
-  -- Restore previous selection state (best effort)
-  if type(r.Main_OnCommand) == "function" then
-    pcall(function() r.Main_OnCommand(40297, 0) end) -- Unselect all tracks
-  end
-  if type(r.SetTrackSelected) == "function" then
-    for _, tr in ipairs(original_tracks) do
-      if tr then
-        pcall(function() r.SetTrackSelected(tr, true) end)
-      end
-    end
-  end
-  if #original_tracks == 0 and target_track and type(r.SetTrackSelected) == "function" then
-    pcall(function() r.SetTrackSelected(target_track, true) end)
-  end
-
-  if had_edit_cursor and type(original_cursor) == "number" then
-    pcall(function()
-      r.SetEditCurPos(original_cursor, false, false)
-    end)
-  end
-
-  local inserted_items = {}
-  if ok_insert and target_track and type(r.CountTrackMediaItems) == "function" and type(r.GetTrackMediaItem) == "function" then
-    local cnt_after = r.CountTrackMediaItems(target_track) or 0
-    for i = 0, cnt_after - 1 do
-      local it = r.GetTrackMediaItem(target_track, i)
-      if it and not before_items[tostring(it)] then
-        inserted_items[#inserted_items + 1] = it
-      end
-    end
-  end
-  return ok_insert, insert_err, inserted_items
-end
-
-local function is_snap_enabled()
-  if type(r.GetToggleCommandStateEx) == "function" then
-    local ok, st = pcall(function()
-      return r.GetToggleCommandStateEx(0, 1157) -- Options: Enable snapping
-    end)
-    if ok then
-      return tonumber(st) == 1
-    end
-  end
-  if type(r.GetToggleCommandState) == "function" then
-    local ok, st = pcall(function()
-      return r.GetToggleCommandState(1157)
-    end)
-    if ok then
-      return tonumber(st) == 1
-    end
-  end
-  return false
-end
-
-local function resolve_drop_position_sec()
-  local pos = nil
-  if type(r.BR_PositionAtMouseCursor) == "function" then
-    local ok, mouse_pos = pcall(function()
-      return r.BR_PositionAtMouseCursor(false)
-    end)
-    if ok and type(mouse_pos) == "number" and mouse_pos >= 0 then
-      pos = mouse_pos
-    end
-  end
-  if type(pos) ~= "number" and type(r.GetCursorPosition) == "function" then
-    pos = r.GetCursorPosition()
-  end
-  if type(pos) ~= "number" then
-    pos = 0
-  end
-
-  if is_snap_enabled() and type(r.SnapToGrid) == "function" then
-    local ok_snap, snapped = pcall(function()
-      return r.SnapToGrid(0, pos)
-    end)
-    if ok_snap and type(snapped) == "number" and snapped >= 0 then
-      pos = snapped
-    end
-  end
-  return pos
-end
-
-local function is_drop_in_arrange_view()
-  if type(r.BR_GetMouseCursorContext) == "function" then
-    local ok, win = pcall(function()
-      return r.BR_GetMouseCursorContext()
-    end)
-    if ok and type(win) == "string" and win ~= "" then
-      return win == "arrange"
-    end
-  end
-  if type(r.BR_PositionAtMouseCursor) == "function" then
-    local ok, mouse_pos = pcall(function()
-      return r.BR_PositionAtMouseCursor(false)
-    end)
-    if ok and type(mouse_pos) == "number" and mouse_pos >= 0 then
-      return true
-    end
-  end
-  return false
-end
-
-local function create_new_track_for_drop()
-  if type(r.CountTracks) ~= "function" or type(r.InsertTrackAtIndex) ~= "function" or type(r.GetTrack) ~= "function" then
-    return nil
-  end
-  local idx = r.CountTracks(0)
-  local ok = pcall(function()
-    r.InsertTrackAtIndex(idx, true)
-  end)
-  if not ok then return nil end
-  return r.GetTrack(0, idx)
-end
-
-insert_path_at_cursor = function(path, display_name, forced_track, insert_pos_sec, allow_create_track, skip_fallback_track, sample_bpm, sample_type)
-  if not path or path == "" then
-    set_runtime_notice("Insert failed: sample path is empty.")
-    return
-  end
-  if not file_exists(path) then
-    set_runtime_notice("Insert failed: file not found.")
-    return
-  end
-  local target_track = forced_track
-  if (not target_track) and (not skip_fallback_track) then
-    target_track = resolve_insert_target_track(false)
-  end
-  if (not target_track) and allow_create_track then
-    target_track = create_new_track_for_drop()
-  end
-  if not target_track then
-    set_runtime_notice("Insert failed: no target track found.")
-    return
-  end
-
-  if type(r.Undo_BeginBlock) == "function" then
-    r.Undo_BeginBlock()
-  end
-  local ok_insert, err, inserted_items = run_insert_media_on_track(path, target_track, insert_pos_sec)
-  if type(r.Undo_EndBlock) == "function" then
-    r.Undo_EndBlock("Sample Lode Manager: Insert selected sample", -1)
-  end
-
-  if not ok_insert then
-    set_runtime_notice("Insert failed: " .. tostring(err))
-    return
-  end
-  local normalized_type = normalize_sample_type(sample_type)
-  local loopsrc_value = nil
-  if normalized_type == "oneshot" then
-    loopsrc_value = 0
-  elseif normalized_type == "loop" then
-    loopsrc_value = 1
-  end
-  do
-    local base_rate = 1.0
-    local preserve_pitch = 0
-    if state.ui.match_insert_to_project_bpm == true then
-      local matched = calc_bpm_match_playrate(sample_bpm)
-      if matched then
-        base_rate = matched
-        preserve_pitch = 1
-      end
-    end
-    local mul = tonumber(state.ui.rate_multiplier) or 1.0
-    if mul < 0.25 then mul = 0.25 end
-    if mul > 4.0 then mul = 4.0 end
-    if math.abs(mul - 1.0) > 0.0001 then
-      preserve_pitch = 0
-    end
-    local rate = base_rate * mul
-    if rate < 0.1 then rate = 0.1 end
-    if rate > 4.0 then rate = 4.0 end
-    for _, item in ipairs(inserted_items or {}) do
-      local take = (type(r.GetActiveTake) == "function") and r.GetActiveTake(item) or nil
-      if take and type(r.SetMediaItemTakeInfo_Value) == "function" and math.abs(rate - 1.0) > 0.0001 then
-        pcall(function()
-          r.SetMediaItemTakeInfo_Value(take, "D_PLAYRATE", rate)
-        end)
-        -- Preserve pitch for BPM match only (mul==1); allow pitch change when mul!=1.
-        pcall(function()
-          r.SetMediaItemTakeInfo_Value(take, "B_PPITCH", preserve_pitch)
-        end)
-        if type(r.GetMediaItemTake_Source) == "function"
-          and type(r.GetMediaSourceLength) == "function"
-          and type(r.SetMediaItemInfo_Value) == "function" then
-          local src = r.GetMediaItemTake_Source(take)
-          if src then
-            local src_len = nil
-            local ok_len, len = pcall(function()
-              return r.GetMediaSourceLength(src)
-            end)
-            if ok_len and type(len) == "number" and len > 0 then
-              src_len = len
-            end
-            if src_len and rate > 0 then
-              local new_item_len = math.max(0.001, src_len / rate)
-              pcall(function()
-                r.SetMediaItemInfo_Value(item, "D_LENGTH", new_item_len)
-              end)
-            end
-          end
-        end
-      end
-      if loopsrc_value ~= nil and type(r.SetMediaItemInfo_Value) == "function" then
-        pcall(function()
-          r.SetMediaItemInfo_Value(item, "B_LOOPSRC", loopsrc_value)
-        end)
-      end
-      if type(r.UpdateItemInProject) == "function" then
-        pcall(function() r.UpdateItemInProject(item) end)
-      end
-    end
-  end
-  if type(r.UpdateArrange) == "function" then
-    pcall(function() r.UpdateArrange() end)
-  end
-  local at_sec = (type(insert_pos_sec) == "number") and string.format(" @ %.3fs", insert_pos_sec) or ""
-  set_runtime_notice("Inserted to " .. get_track_label(target_track) .. at_sec .. ": " .. tostring(display_name or path))
-end
-
-local function get_mouse_left_down()
-  if type(r.JS_Mouse_GetState) ~= "function" then
-    return nil
-  end
-  local ok, state_mask = pcall(function()
-    return r.JS_Mouse_GetState(1)
-  end)
-  if not ok or type(state_mask) ~= "number" then
-    return nil
-  end
-  return (state_mask & 1) == 1
-end
-
-local function point_in_wave_screen_rect(mx, my, rect)
-  if not rect or type(rect.w) ~= "number" or type(rect.h) ~= "number" or rect.w < 1 or rect.h < 1 then
-    return false
-  end
-  local x0 = tonumber(rect.x0) or 0
-  local y0 = tonumber(rect.y0) or 0
-  return mx >= x0 and mx <= x0 + rect.w and my >= y0 and my <= y0 + rect.h
-end
-
-local function mouse_ratio_in_wave_rect(mx, my, rect)
-  local x0 = tonumber(rect.x0) or 0
-  local ww = tonumber(rect.w) or 1
-  return math.max(0, math.min(1, (mx - x0) / ww))
-end
-
--- Default IsWindowHovered/Focused excludes child windows; detail waveform lives inside ##detail_panel.
-local function app_script_window_active_for_input()
-  if not is_imgui_ctx_valid() then return false end
-  local focused = false
-  local hovered = false
-  if r.ImGui_IsWindowFocused then
-    pcall(function()
-      local fl = 0
-      if r.ImGui_FocusedFlags_ChildWindows then
-        fl = fl | r.ImGui_FocusedFlags_ChildWindows()
-      end
-      if r.ImGui_FocusedFlags_DockHierarchy then
-        fl = fl | r.ImGui_FocusedFlags_DockHierarchy()
-      end
-      if fl ~= 0 then
-        focused = (r.ImGui_IsWindowFocused(ctx, fl) == true)
-      else
-        focused = (r.ImGui_IsWindowFocused(ctx) == true)
-      end
-    end)
-  end
-  if r.ImGui_IsWindowHovered then
-    pcall(function()
-      local fl = 0
-      if r.ImGui_HoveredFlags_ChildWindows then
-        fl = fl | r.ImGui_HoveredFlags_ChildWindows()
-      end
-      if r.ImGui_HoveredFlags_DockHierarchy then
-        fl = fl | r.ImGui_HoveredFlags_DockHierarchy()
-      end
-      if fl ~= 0 then
-        hovered = (r.ImGui_IsWindowHovered(ctx, fl) == true)
-      else
-        hovered = (r.ImGui_IsWindowHovered(ctx) == true)
-      end
-    end)
-  end
-  return focused or hovered
-end
-
---- Waveform: drag updates playhead only; playback starts on mouse up. Drag out to arrange = insert (same as row D&D).
-local function handle_waveform_mouse()
-  local wnd_active = app_script_window_active_for_input()
-  local wf_cap = state.runtime and state.runtime.wf_capture == true
-  if not (state.runtime and state.runtime.detail_preview_interactive == true) then
-    state.runtime.wf_last_mouse_down = false
-    state.runtime.wf_capture = false
-    state.runtime.wave_scrub_ratio = nil
-    return
-  end
-  if not (wnd_active or wf_cap) then
-    state.runtime.wf_last_mouse_down = false
-    state.runtime.wf_capture = false
-    state.runtime.wave_scrub_ratio = nil
-    return
-  end
-  local mouse_down = get_mouse_left_down()
-  if mouse_down == nil then
-    state.runtime.wf_last_mouse_down = false
-    return
-  end
-
-  local R = state.runtime.wave_screen_rect
-  local row = get_selected_sample_row()
-  local mx, my = r.GetMousePosition()
-  mx = tonumber(mx) or 0
-  my = tonumber(my) or 0
-
-  local wpath = state.runtime.wf_path
-  if state.runtime.wf_capture and wpath then
-    local coherent = row and row.path == wpath
-    if not coherent then
-      if not mouse_down then
-        state.runtime.wave_scrub_ratio = nil
-        state.runtime.wf_capture = false
-        state.runtime.wf_path = nil
-        state.runtime.wf_name = nil
-      end
-      state.runtime.wf_last_mouse_down = mouse_down
-      return
-    end
-
-    local inside = R and point_in_wave_screen_rect(mx, my, R)
-
-    if mouse_down then
-      if inside then
-        if state.runtime.dnd_drag_path == wpath then
-          state.runtime.dnd_drag_path = nil
-          state.runtime.dnd_drag_name = nil
-          state.runtime.dnd_drag_bpm = nil
-          state.runtime.dnd_drag_type = nil
-          state.runtime.dnd_max_dist2 = 0
-        end
-        local ratio = mouse_ratio_in_wave_rect(mx, my, R)
-        state.runtime.wave_scrub_ratio = ratio
-      else
-        state.runtime.wave_scrub_ratio = nil
-        if state.runtime.dnd_drag_path ~= wpath then
-          state.runtime.dnd_drag_path = wpath
-          state.runtime.dnd_drag_name = state.runtime.wf_name
-          state.runtime.dnd_drag_bpm = row and row.bpm or nil
-          state.runtime.dnd_drag_type = row and row.type or nil
-          state.runtime.dnd_start_x = state.runtime.wf_start_mx
-          state.runtime.dnd_start_y = state.runtime.wf_start_my
-          state.runtime.dnd_max_dist2 = 100
-        end
-      end
-    else
-      if inside then
-        local ratio = mouse_ratio_in_wave_rect(mx, my, R)
-        preview_seek_or_restart_from_ratio(wpath, row.filename or state.runtime.wf_name, ratio, true)
-      end
-      state.runtime.wave_scrub_ratio = nil
-      state.runtime.wf_capture = false
-      state.runtime.wf_path = nil
-      state.runtime.wf_name = nil
-    end
-    state.runtime.wf_last_mouse_down = mouse_down
-    return
-  end
-
-  if mouse_down and (not state.runtime.wf_last_mouse_down) and R and row and row.path and file_exists(row.path) then
-    if point_in_wave_screen_rect(mx, my, R) then
-      state.runtime.wf_capture = true
-      state.runtime.wf_path = row.path
-      state.runtime.wf_name = row.filename or row.path
-      state.runtime.wf_start_mx = mx
-      state.runtime.wf_start_my = my
-      local ratio = mouse_ratio_in_wave_rect(mx, my, R)
-      if state.playing then
-        stop_preview(true)
-      end
-      state.runtime.wave_scrub_ratio = ratio
-    end
-  end
-
-  state.runtime.wf_last_mouse_down = mouse_down
-end
-
-local function begin_drag_for_row(row, row_idx)
-  if not row or not row.path or row.path == "" then return end
-  local mouse_down = get_mouse_left_down()
-  if mouse_down == nil then return end
-
-  local hovered = false
-  pcall(function()
-    hovered = r.ImGui_IsItemHovered(ctx)
-  end)
-  local active = false
-  pcall(function()
-    active = r.ImGui_IsItemActive(ctx)
-  end)
-
-  -- row????????????E????active?????????????????E
-  if mouse_down and (hovered or active) and ((not state.runtime.dnd_last_mouse_down) or (not state.runtime.dnd_drag_path)) then
-    set_selected_row(row_idx)
-    state.runtime.dnd_drag_path = row.path
-    state.runtime.dnd_drag_name = row.filename or row.path
-    state.runtime.dnd_drag_bpm = row.bpm
-    state.runtime.dnd_drag_type = row.type
-    local mx, my = r.GetMousePosition()
-    state.runtime.dnd_start_x = tonumber(mx) or 0
-    state.runtime.dnd_start_y = tonumber(my) or 0
-    state.runtime.dnd_max_dist2 = 0
-  end
-end
-
-local function handle_drag_drop_insert()
-  local wnd_active = app_script_window_active_for_input()
-  if (not wnd_active) and (not state.runtime.dnd_drag_path) then
-    state.runtime.dnd_last_mouse_down = false
-    return
-  end
-  local mouse_down = get_mouse_left_down()
-  if mouse_down == nil then
-    if state.runtime.dnd_drag_path and not state.runtime.dnd_warned_no_js_api then
-      set_runtime_notice("D&D drop detection requires js_ReaScriptAPI (JS_Mouse_GetState).")
-      state.runtime.dnd_warned_no_js_api = true
-    end
-    return
-  end
-
-  if state.runtime.dnd_drag_path and mouse_down then
-    local mx, my = r.GetMousePosition()
-    local dx = (tonumber(mx) or 0) - (state.runtime.dnd_start_x or 0)
-    local dy = (tonumber(my) or 0) - (state.runtime.dnd_start_y or 0)
-    local dist2 = dx * dx + dy * dy
-    if dist2 > (state.runtime.dnd_max_dist2 or 0) then
-      state.runtime.dnd_max_dist2 = dist2
-    end
-  end
-
-  if state.runtime.dnd_drag_path and state.runtime.dnd_last_mouse_down and (not mouse_down) then
-    if (state.runtime.dnd_max_dist2 or 0) >= 1 then
-      if is_drop_in_arrange_view() then
-        local drop_track = resolve_insert_target_track(true)
-        local drop_pos = resolve_drop_position_sec()
-        if drop_track then
-          insert_path_at_cursor(
-            state.runtime.dnd_drag_path,
-            state.runtime.dnd_drag_name,
-            drop_track,
-            drop_pos,
-            false,
-            true,
-            state.runtime.dnd_drag_bpm,
-            state.runtime.dnd_drag_type
-          )
-        else
-          insert_path_at_cursor(
-            state.runtime.dnd_drag_path,
-            state.runtime.dnd_drag_name,
-            nil,
-            drop_pos,
-            true,
-            true,
-            state.runtime.dnd_drag_bpm,
-            state.runtime.dnd_drag_type
-          )
-        end
-      else
-        set_runtime_notice("Drop ignored: release in arrange view to insert.")
-      end
-    end
-    state.runtime.dnd_drag_path = nil
-    state.runtime.dnd_drag_name = nil
-    state.runtime.dnd_drag_bpm = nil
-    state.runtime.dnd_drag_type = nil
-    state.runtime.dnd_max_dist2 = 0
-    state.runtime.dnd_warned_no_js_api = false
-  end
-
-  state.runtime.dnd_last_mouse_down = mouse_down
-end
 
 local function draw_pack_section(win_w)
   if ui_pack and type(ui_pack.draw) == "function" then
@@ -3702,6 +2473,181 @@ function galaxy_ops.hash01_from_int(n)
   return v - math.floor(v)
 end
 
+setup_all_ui_modules = function()
+  if not (state and ctx) then return end
+  if ui_preview and type(ui_preview.setup) == "function" then
+    ui_preview.setup({
+      r = r,
+      state = state,
+      C = C,
+      set_runtime_notice = set_runtime_notice,
+      file_exists = file_exists,
+      key_bpm = key_bpm,
+      get_selected_sample_row = get_selected_sample_row,
+    })
+  end
+  if ui_search and type(ui_search.setup) == "function" then
+    ui_search.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      safe_push_font = safe_push_font,
+      safe_pop_font = safe_pop_font,
+      calc_text_w = calc_text_w,
+      should_accept_toggle_click = should_accept_toggle_click,
+      parse_optional_number = tag_ops.parse_optional_number,
+      ui_input_text_with_hint = ui_input_text_with_hint,
+      window_flag_noresize = window_flag_noresize,
+      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
+      filter_tags_has = tag_ops.filter_tags_has,
+      filter_tags_clear_all = tag_ops.filter_tags_clear_all,
+      filter_tags_remove_at = tag_ops.filter_tags_remove_at,
+      filter_tags_remove_value = tag_ops.filter_tags_remove_value,
+      filter_tags_add_unique = tag_ops.filter_tags_add_unique,
+      filter_tags_exclude_has = tag_ops.filter_tags_exclude_has,
+      filter_tags_exclude_remove_at = tag_ops.filter_tags_exclude_remove_at,
+      filter_tags_exclude_remove_value = tag_ops.filter_tags_exclude_remove_value,
+      filter_tags_exclude_add_unique = tag_ops.filter_tags_exclude_add_unique,
+      draw_text_only_button = draw_text_only_button,
+      content_width = content_width,
+      tag_chip_label_short = tag_chip_label_short,
+      draw_wrapped_tag_chips = draw_wrapped_tag_chips,
+      calc_text_w_fallback = 42,
+      tag_chip_min_w = TAG_CHIP_MIN_W,
+      tag_chip_max_w_filter = TAG_CHIP_MAX_W_FILTER,
+      font_small = font_small,
+      get_project_bpm = get_project_bpm,
+      search_ui = C.SEARCH_UI,
+    })
+  end
+  if ui_pack and type(ui_pack.setup) == "function" then
+    ui_pack.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      cover_art = cover_art,
+      scan_controller = scan_controller,
+      font_small = font_small,
+      active_pack_strip_h = C.ACTIVE_PACK_STRIP_H,
+      active_pack_chip_pad_y = C.ACTIVE_PACK_CHIP_PAD_Y,
+      active_pack_scrollbar_size = C.ACTIVE_PACK_SCROLLBAR_SIZE,
+      pack_list_row_min_h = C.PACK_LIST_ROW_MIN_H,
+      pack_list_thumb = C.PACK_LIST_THUMB,
+      content_width = content_width,
+      safe_push_font = safe_push_font,
+      safe_pop_font = safe_pop_font,
+      window_flag_noresize = window_flag_noresize,
+      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
+      window_flag_always_vertical_scrollbar = window_flag_always_vertical_scrollbar,
+      ui_input_text_with_hint = ui_input_text_with_hint,
+      draw_rows_virtualized = draw_rows_virtualized,
+      filter_pack_ids_has = filter_pack_ids_has,
+      filter_pack_ids_toggle = filter_pack_ids_toggle,
+      filter_pack_ids_clear = filter_pack_ids_clear,
+      filter_pack_ids_remove_at = filter_pack_ids_remove_at,
+      pack_display_name_by_id = pack_display_name_by_id,
+      reload_pack_lists = reload_pack_lists,
+      set_runtime_notice = set_runtime_notice,
+      sanitize_root_path_input = sanitize_root_path_input,
+      set_persisted_splice_db_path = set_persisted_splice_db_path,
+      set_persisted_splice_relink_roots = set_persisted_splice_relink_roots,
+      pack_ui = C.PACK_UI,
+      use_native_tabs = supports_native_tab_colors(),
+    })
+  end
+  if ui_samples_list and type(ui_samples_list.setup) == "function" then
+    ui_samples_list.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      cover_art = cover_art,
+      sample_section_min_h = C.SAMPLE_SECTION_MIN_H,
+      sample_list_row_min_h = C.SAMPLE_LIST_ROW_MIN_H,
+      sample_list_thumb = C.SAMPLE_LIST_THUMB,
+      font_main = font_main,
+      window_flag_noresize = window_flag_noresize,
+      window_flag_noscrollbar = window_flag_noscrollbar,
+      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
+      safe_push_font = safe_push_font,
+      safe_pop_font = safe_pop_font,
+      draw_text_only_button = draw_text_only_button,
+      draw_rows_virtualized = draw_rows_virtualized,
+      imgui_mod_down = imgui_mod_down,
+      bulk_clear_all_selection = bulk_clear_all_selection,
+      bulk_set_row_selected = bulk_set_row_selected,
+      bulk_toggle_sample_id = bulk_toggle_sample_id,
+      bulk_selected_count = bulk_selected_count,
+      bulk_selected_ids_list = bulk_selected_ids_list,
+      set_selected_row = set_selected_row,
+      stop_preview = stop_preview,
+      set_runtime_notice = set_runtime_notice,
+      play_selected_sample_preview = play_selected_sample_preview,
+      begin_drag_for_row = (ui_dnd and ui_dnd.begin_drag_for_row) or nil,
+      open_sample_edit_popup_for_row = M._open_sample_edit_popup_for_row,
+      open_sample_edit_popup_for_ids = M._open_sample_edit_popup_for_ids,
+      list_ui = C.LIST_UI,
+    })
+  end
+  if ui_samples_galaxy and type(ui_samples_galaxy.setup) == "function" then
+    ui_samples_galaxy.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      scan_controller = scan_controller,
+      galaxy_ops = galaxy_ops,
+      sample_section_min_h = C.SAMPLE_SECTION_MIN_H,
+      galaxy_pick_radius_px = GALAXY_PICK_RADIUS_PX,
+      window_flag_noresize = window_flag_noresize,
+      window_flag_noscrollbar = window_flag_noscrollbar,
+      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
+      content_width = content_width,
+      set_runtime_notice = set_runtime_notice,
+      bulk_clear_all_selection = bulk_clear_all_selection,
+      bulk_set_row_selected = bulk_set_row_selected,
+      set_selected_row = set_selected_row,
+      play_selected_sample_preview = play_selected_sample_preview,
+    })
+  end
+  if ui_dnd and type(ui_dnd.setup) == "function" then
+    ui_dnd.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      set_runtime_notice = set_runtime_notice,
+      file_exists = file_exists,
+      get_selected_sample_row = get_selected_sample_row,
+      set_selected_row = set_selected_row,
+      stop_preview = stop_preview,
+      preview_seek_or_restart_from_ratio = preview_seek_or_restart_from_ratio,
+      normalize_sample_type = normalize_sample_type,
+      calc_bpm_match_playrate = calc_bpm_match_playrate,
+      is_imgui_ctx_valid = is_imgui_ctx_valid,
+    })
+  end
+  if ui_edit_popup and type(ui_edit_popup.setup) == "function" then
+    ui_edit_popup.setup({
+      r = r,
+      ctx = ctx,
+      state = state,
+      sqlite_store = sqlite_store,
+      ui_input_text_with_hint = ui_input_text_with_hint,
+      window_flag_noresize = window_flag_noresize,
+      set_runtime_notice = set_runtime_notice,
+      find_row_index_by_sample_id = find_row_index_by_sample_id,
+      make_sample_row_snapshot = M._make_sample_row_snapshot,
+      parse_edit_key_parts = parse_edit_key_parts,
+      build_edit_key_text = build_edit_key_text,
+      KEY_ROOT_OPTIONS = KEY_ROOT_OPTIONS,
+      is_imgui_ctx_valid = is_imgui_ctx_valid,
+      app_mod = M,
+    })
+  end
+end
+
 local function draw_samples_section(win_w, list_h)
   if not is_imgui_ctx_valid() then return end
   local tab = state.ui.sample_view_tab
@@ -3989,7 +2935,9 @@ local function draw_detail_section(win_w, detail_h)
       end
       r.ImGui_SameLine(ctx, 0, action_gap)
       if r.ImGui_Button(ctx, "Copy item", copy_w, 20) then
-        copy_selected_sample_as_item_to_clipboard()
+        if ui_dnd and type(ui_dnd.copy_selected_sample_as_item_to_clipboard) == "function" then
+          ui_dnd.copy_selected_sample_as_item_to_clipboard()
+        end
       end
       r.ImGui_SameLine(ctx, 0, action_gap)
       local rm = tonumber(state.ui.rate_multiplier) or 1.0
@@ -4139,7 +3087,9 @@ local function draw_detail_section(win_w, detail_h)
           state.runtime.rate_slider_lock_until_mouse_up = true
         end
         if state.playing and state.runtime.preview_handle and type(r.CF_Preview_SetValue) == "function" then
-          apply_preview_playrate(state.runtime.preview_handle, state.runtime.preview_sample_bpm)
+          if ui_preview and type(ui_preview.apply_preview_playrate) == "function" then
+            ui_preview.apply_preview_playrate(state.runtime.preview_handle, state.runtime.preview_sample_bpm)
+          end
         end
       elseif (not lock_rate_until_mouse_up) and rendered and ch_rm then
         local nv = tonumber(out_rm) or rm
@@ -4147,7 +3097,9 @@ local function draw_detail_section(win_w, detail_h)
         if nv > 4.0 then nv = 4.0 end
         state.ui.rate_multiplier = nv
         if state.playing and state.runtime.preview_handle and type(r.CF_Preview_SetValue) == "function" then
-          apply_preview_playrate(state.runtime.preview_handle, state.runtime.preview_sample_bpm)
+          if ui_preview and type(ui_preview.apply_preview_playrate) == "function" then
+            ui_preview.apply_preview_playrate(state.runtime.preview_handle, state.runtime.preview_sample_bpm)
+          end
         end
       end
       r.ImGui_Separator(ctx)
@@ -4295,7 +3247,9 @@ local function draw_detail_section(win_w, detail_h)
           end)
         end
         if changed_match_preview then
-          apply_preview_playrate(state.runtime.preview_handle, state.runtime.preview_sample_bpm)
+          if ui_preview and type(ui_preview.apply_preview_playrate) == "function" then
+            ui_preview.apply_preview_playrate(state.runtime.preview_handle, state.runtime.preview_sample_bpm)
+          end
         end
       end
     end
@@ -4874,525 +3828,20 @@ local function draw_scan_progress_window()
 end
 
 function M._draw_sample_edit_popup_window()
-  if not is_imgui_ctx_valid() then return end
-  if not state or not state.runtime or state.runtime.edit_popup_open ~= true then return end
-  local ids = {}
-  do
-    local raw_ids = state.runtime.edit_popup_ids
-    if type(raw_ids) == "table" and #raw_ids > 0 then
-      local seen = {}
-      for _, raw in ipairs(raw_ids) do
-        local n = tonumber(raw)
-        if n and n > 0 and not seen[n] then
-          seen[n] = true
-          ids[#ids + 1] = n
-        end
-      end
-    end
-    if #ids == 0 then
-      local sid0 = tonumber(state.runtime.edit_popup_sample_id)
-      if sid0 and sid0 > 0 then
-        ids[1] = sid0
-      end
-    end
-  end
-  local sid = tonumber(ids[1])
-  if #ids == 0 or not sid or sid < 1 then
-    state.runtime.edit_popup_open = false
-    return
-  end
-
-  local row = nil
-  local idx = find_row_index_by_sample_id(sid)
-  if idx and state.rows and state.rows[idx] then
-    row = state.rows[idx]
-    state.runtime.edit_popup_snapshot = M._make_sample_row_snapshot(row)
-  else
-    row = state.runtime.edit_popup_snapshot
-  end
-
-  if not row then
-    state.runtime.edit_popup_open = false
-    return
-  end
-
-  local form_key = (#ids == 1) and ("single:" .. tostring(sid)) or ("multi:" .. tostring(sid) .. ":" .. tostring(#ids))
-  if state.runtime.edit_popup_form_key ~= form_key then
-    state.runtime.edit_popup_form_key = form_key
-    state.runtime.edit_popup_form_sample_id = sid
-    state.runtime.edit_popup_bpm_input = row.bpm and tostring(row.bpm) or ""
-    local init_root, init_mode = parse_edit_key_parts(row.key_estimate)
-    state.runtime.edit_popup_key_root = init_root or "C"
-    state.runtime.edit_popup_key_mode = init_mode or "none"
-    state.runtime.edit_popup_tag_input = ""
-  end
-
-  if r.ImGui_SetNextWindowSize then
-    local cond = 0
-    if r.ImGui_Cond_FirstUseEver then cond = r.ImGui_Cond_FirstUseEver() end
-    pcall(function() r.ImGui_SetNextWindowSize(ctx, 420, 560, cond) end)
-  end
-
-  local visible, open = false, true
-  local begin_ok, begin_ret_visible, begin_ret_open = pcall(r.ImGui_Begin, ctx, "Sample Edit", true, window_flag_noresize())
-  local begin_has_window = begin_ok and begin_ret_visible ~= nil  if begin_ok then
-    visible = begin_ret_visible == true
-    open = begin_ret_open ~= false
-  end
-  if begin_has_window and visible then
-    if #ids == 1 then
-      r.ImGui_TextWrapped(ctx, tostring(row.filename or ("sample #" .. tostring(sid))))
-      if row.pack_name and tostring(row.pack_name) ~= "" then
-        r.ImGui_Text(ctx, "Pack: " .. tostring(row.pack_name))
-      end
-    else
-      r.ImGui_TextWrapped(ctx, tostring(#ids) .. " selected samples")
-      if row and row.filename then
-        r.ImGui_TextWrapped(ctx, "Anchor: " .. tostring(row.filename))
-      end
-    end
-    r.ImGui_Separator(ctx)
-
-    r.ImGui_Text(ctx, "Target: " .. tostring(#ids) .. " sample(s)")
-    r.ImGui_Separator(ctx)
-    r.ImGui_Text(ctx, "BPM")
-
-    r.ImGui_PushItemWidth(ctx, -1)
-    local ch_bpm, bpm_txt = ui_input_text_with_hint("##popup_manual_bpm", "BPM", state.runtime.edit_popup_bpm_input or "", 32)
-    if ch_bpm then state.runtime.edit_popup_bpm_input = bpm_txt end
-    r.ImGui_PopItemWidth(ctx)
-    local bpm_raw = tostring(state.runtime.edit_popup_bpm_input or ""):gsub("^%s+", ""):gsub("%s+$", "")
-
-    if r.ImGui_Button(ctx, "Apply BPM##popup", -1, 22) and sqlite_store and type(sqlite_store.set_manual_bpm_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_bpm_for_samples({ db = state.store.conn }, ids, bpm_raw ~= "" and bpm_raw or nil)
-      end)
-      if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Set BPM failed: " .. tostring(ret_msg or "unknown")) end
-    end
-    if r.ImGui_Button(ctx, "Clear BPM value##popup", -1, 22) and sqlite_store and type(sqlite_store.set_manual_bpm_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_bpm_for_samples({ db = state.store.conn }, ids, "__CLEAR__")
-      end)
-      if ok and ret_ok then
-        state.runtime.edit_popup_bpm_input = ""
-        state.needs_reload_samples = true
-      else
-        set_runtime_notice("Clear BPM failed: " .. tostring(ret_msg or "unknown"))
-      end
-    end
-    if r.ImGui_Button(ctx, "Reset BPM to detected##popup", -1, 22) and sqlite_store and type(sqlite_store.reset_bpm_to_detected_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.reset_bpm_to_detected_for_samples({ db = state.store.conn }, ids)
-      end)
-      if ok and ret_ok then
-        state.runtime.edit_popup_bpm_input = row.bpm and tostring(row.bpm) or ""
-        state.needs_reload_samples = true
-      else
-        set_runtime_notice("Reset BPM failed: " .. tostring(ret_msg or "unknown"))
-      end
-    end
-
-    r.ImGui_Separator(ctx)
-    r.ImGui_Text(ctx, "Key")
-    local mode = state.runtime.edit_popup_key_mode or "none"
-    local root_sharp = normalize_key_root_text(state.runtime.edit_popup_key_root) or "C"
-    local root_label = key_root_dual_label(root_sharp) or root_sharp
-    if r.ImGui_Button(ctx, "Root: " .. root_label .. " v##popup_edit_key_root_btn", 150, 20) and r.ImGui_OpenPopup then
-      r.ImGui_OpenPopup(ctx, "##popup_edit_key_root_popup")
-    end
-    if r.ImGui_BeginPopup and r.ImGui_BeginPopup(ctx, "##popup_edit_key_root_popup") then
-      for _, key_root in ipairs(KEY_ROOT_OPTIONS) do
-        local option_label = key_root_dual_label(key_root) or key_root
-        if r.ImGui_Selectable(ctx, option_label, root_sharp == key_root) then
-          state.runtime.edit_popup_key_root = key_root
-        end
-      end
-      r.ImGui_EndPopup(ctx)
-    end
-    r.ImGui_SameLine(ctx, 0, 6)
-    local major_on = (mode == "major")
-    if r.ImGui_Button(ctx, (major_on and "?EMajor" or "?EMajor") .. "##popup_edit_key_mode_major", 88, 20) then
-      state.runtime.edit_popup_key_mode = major_on and "none" or "major"
-    end
-    r.ImGui_SameLine(ctx, 0, 6)
-    local minor_on = (mode == "minor")
-    if r.ImGui_Button(ctx, (minor_on and "?EMinor" or "?EMinor") .. "##popup_edit_key_mode_minor", 88, 20) then
-      state.runtime.edit_popup_key_mode = minor_on and "none" or "minor"
-    end
-    local key_text = build_edit_key_text(state.runtime.edit_popup_key_root, state.runtime.edit_popup_key_mode) or ""
-
-    if r.ImGui_Button(ctx, "Apply key##popup", -1, 22) and sqlite_store and type(sqlite_store.set_manual_key_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_key_for_samples({ db = state.store.conn }, ids, key_text ~= "" and key_text or nil)
-      end)
-      if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Set key failed: " .. tostring(ret_msg or "unknown")) end
-    end
-    if r.ImGui_Button(ctx, "Clear key value##popup", -1, 22) and sqlite_store and type(sqlite_store.set_manual_key_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_key_for_samples({ db = state.store.conn }, ids, "__CLEAR__")
-      end)
-      if ok and ret_ok then
-        state.runtime.edit_popup_key_root = "C"
-        state.runtime.edit_popup_key_mode = "none"
-        state.needs_reload_samples = true
-      else
-        set_runtime_notice("Clear key failed: " .. tostring(ret_msg or "unknown"))
-      end
-    end
-    if r.ImGui_Button(ctx, "Reset key to detected##popup", -1, 22) and sqlite_store and type(sqlite_store.reset_key_to_detected_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.reset_key_to_detected_for_samples({ db = state.store.conn }, ids)
-      end)
-      if ok and ret_ok then
-        local rt, md = parse_edit_key_parts(row.key_estimate)
-        state.runtime.edit_popup_key_root = rt or "C"
-        state.runtime.edit_popup_key_mode = md or "none"
-        state.needs_reload_samples = true
-      else
-        set_runtime_notice("Reset key failed: " .. tostring(ret_msg or "unknown"))
-      end
-    end
-
-    r.ImGui_Separator(ctx)
-    r.ImGui_Text(ctx, "Tags")
-    local single_tags, common_tags, mixed_tags = M._collect_popup_tag_groups(ids)
-    local function draw_tag_list_block(title, tags)
-      r.ImGui_Text(ctx, title)
-      if not tags or #tags == 0 then
-        r.ImGui_Text(ctx, "--")
-        return
-      end
-      local shown = 0
-      for i, tg in ipairs(tags) do
-        local label = tostring(tg or "")
-        if label ~= "" then
-          if shown > 0 then r.ImGui_SameLine(ctx, 0, 6) end
-          if r.ImGui_Button(ctx, label .. "##popup_tag_state_" .. title .. "_" .. tostring(i), 0, 20) then
-            state.runtime.edit_popup_tag_input = label
-          end
-          shown = shown + 1
-        end
-      end
-    end
-    if #ids == 1 then
-      draw_tag_list_block("Current tags", single_tags)
-    else
-      draw_tag_list_block("Common tags", common_tags)
-      draw_tag_list_block("Not common tags", mixed_tags)
-    end
-    r.ImGui_Separator(ctx)
-    r.ImGui_Text(ctx, "Tag edit")
-    r.ImGui_PushItemWidth(ctx, -1)
-    local ch_tag, tag_in = ui_input_text_with_hint("##popup_bulk_tag_input", "Tag", state.runtime.edit_popup_tag_input or "", 128)
-    if ch_tag then state.runtime.edit_popup_tag_input = tag_in end
-    r.ImGui_PopItemWidth(ctx)
-    local tag_text = tostring(state.runtime.edit_popup_tag_input or ""):gsub("^%s+", ""):gsub("%s+$", "")
-    local tag_suggestions = {}
-    if state.store.available and sqlite_store and type(sqlite_store.get_tags_by_usage) == "function" then
-      local ok_sug, rows = pcall(function()
-        return sqlite_store.get_tags_by_usage({ db = state.store.conn }, { limit = 12, name_contains = (tag_text ~= "" and tag_text or nil) })
-      end)
-      if ok_sug and type(rows) == "table" then tag_suggestions = rows end
-    end
-    if #tag_suggestions > 0 then
-      r.ImGui_Text(ctx, "Suggestions")
-      local shown = 0
-      for i, it in ipairs(tag_suggestions) do
-        local tg = tostring((type(it) == "table" and it.tag) or "")
-        if tg ~= "" then
-          if shown > 0 then r.ImGui_SameLine(ctx, 0, 6) end
-          local cnt = tonumber((type(it) == "table" and it.count) or 0) or 0
-          local chip = (cnt > 0) and (tg .. " (" .. tostring(cnt) .. ")") or tg
-          if r.ImGui_Button(ctx, chip .. "##popup_edit_tag_suggest_" .. tostring(i), 0, 20) then
-            state.runtime.edit_popup_tag_input = tg
-            tag_text = tg
-          end
-          shown = shown + 1
-        end
-      end
-    end
-    if r.ImGui_Button(ctx, "Add tag##popup", -1, 24) and tag_text ~= "" and sqlite_store and type(sqlite_store.set_manual_tag_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_tag_for_samples({ db = state.store.conn }, ids, tag_text, true)
-      end)
-      if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Bulk add tag failed: " .. tostring(ret_msg or "unknown")) end
-    end
-    if r.ImGui_Button(ctx, "Remove tag##popup", -1, 24) and tag_text ~= "" and sqlite_store and type(sqlite_store.set_manual_tag_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_tag_for_samples({ db = state.store.conn }, ids, tag_text, false)
-      end)
-      if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Bulk remove tag failed: " .. tostring(ret_msg or "unknown")) end
-    end
-    if r.ImGui_Button(ctx, "Reset tags to default##popup", -1, 24) and sqlite_store and type(sqlite_store.reset_tags_to_default_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.reset_tags_to_default_for_samples({ db = state.store.conn }, ids)
-      end)
-      if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Reset tags failed: " .. tostring(ret_msg or "unknown")) end
-    end
-
-    r.ImGui_Separator(ctx)
-    r.ImGui_Text(ctx, "Type override")
-    if r.ImGui_Button(ctx, "Set oneshot##popup", -1, 24) and sqlite_store and type(sqlite_store.set_manual_type_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_type_for_samples({ db = state.store.conn }, ids, "oneshot")
-      end)
-      if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Set oneshot failed: " .. tostring(ret_msg or "unknown")) end
-    end
-    if r.ImGui_Button(ctx, "Set loop##popup", -1, 24) and sqlite_store and type(sqlite_store.set_manual_type_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_type_for_samples({ db = state.store.conn }, ids, "loop")
-      end)
-      if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Set loop failed: " .. tostring(ret_msg or "unknown")) end
-    end
-    if r.ImGui_Button(ctx, "Clear type override##popup", -1, 24) and sqlite_store and type(sqlite_store.set_manual_type_for_samples) == "function" then
-      local ok, ret_ok, ret_msg = pcall(function()
-        return sqlite_store.set_manual_type_for_samples({ db = state.store.conn }, ids, nil)
-      end)
-      if ok and ret_ok then state.needs_reload_samples = true else set_runtime_notice("Clear type override failed: " .. tostring(ret_msg or "unknown")) end
-    end
-  end
-  if begin_has_window and is_imgui_ctx_valid() then
-    local ok_end_edit, err_end_edit = pcall(function() r.ImGui_End(ctx) end)
-    if not ok_end_edit then    end
-  end
-  if open == false then
-    state.runtime.edit_popup_open = false
-    state.runtime.edit_popup_ids = nil
+  if ui_edit_popup and type(ui_edit_popup.draw_sample_edit_popup_window) == "function" then
+    ui_edit_popup.draw_sample_edit_popup_window()
   end
 end
 
 function M._draw_pack_bulk_tag_window()
-  if not is_imgui_ctx_valid() then return end
-  if not state or not state.runtime or state.runtime.pack_bulk_tag_open ~= true then return end
-  local pid = tonumber(state.runtime.pack_bulk_tag_pack_id)
-  if not pid or pid < 1 then
-    state.runtime.pack_bulk_tag_open = false
-    return
-  end
-
-  if r.ImGui_SetNextWindowSize then
-    local cond = 0
-    if r.ImGui_Cond_FirstUseEver then cond = r.ImGui_Cond_FirstUseEver() end
-    pcall(function() r.ImGui_SetNextWindowSize(ctx, 420, 240, cond) end)
-  end
-  local title = "Tag pack samples"
-  local visible, open = false, true
-  local begin_ok, begin_ret_visible, begin_ret_open = pcall(r.ImGui_Begin, ctx, title, true, window_flag_noresize())
-  local begin_has_window = begin_ok and begin_ret_visible ~= nil  if begin_ok then
-    visible = begin_ret_visible == true
-    open = begin_ret_open ~= false
-  end
-  if begin_has_window and visible then
-    local pack_name = tostring(state.runtime.pack_bulk_tag_pack_name or ("pack #" .. tostring(pid)))
-    r.ImGui_TextWrapped(ctx, pack_name)
-    r.ImGui_Separator(ctx)
-
-    r.ImGui_Text(ctx, "Tag")
-    r.ImGui_PushItemWidth(ctx, -1)
-    local chg, txt = ui_input_text_with_hint("##pack_bulk_tag_input", "Tag", state.runtime.pack_bulk_tag_input or "", 128)
-    r.ImGui_PopItemWidth(ctx)
-    if chg then state.runtime.pack_bulk_tag_input = txt end
-    local tag_text = tostring(state.runtime.pack_bulk_tag_input or ""):gsub("^%s+", ""):gsub("%s+$", "")
-
-    local tag_suggestions = {}
-    if state.store and state.store.available and sqlite_store and type(sqlite_store.get_tags_by_usage) == "function" then
-      local ok_sug, rows = pcall(function()
-        return sqlite_store.get_tags_by_usage({ db = state.store.conn }, { limit = 12, name_contains = (tag_text ~= "" and tag_text or nil) })
-      end)
-      if ok_sug and type(rows) == "table" then tag_suggestions = rows end
-    end
-    if #tag_suggestions > 0 then
-      r.ImGui_Text(ctx, "Suggestions")
-      local shown = 0
-      for i, it in ipairs(tag_suggestions) do
-        local tg = tostring((type(it) == "table" and it.tag) or "")
-        if tg ~= "" then
-          if shown > 0 then r.ImGui_SameLine(ctx, 0, 6) end
-          local cnt = tonumber((type(it) == "table" and it.count) or 0) or 0
-          local chip = (cnt > 0) and (tg .. " (" .. tostring(cnt) .. ")") or tg
-          if r.ImGui_Button(ctx, chip .. "##pack_tag_suggest_" .. tostring(i), 0, 20) then
-            state.runtime.pack_bulk_tag_input = tg
-            tag_text = tg
-          end
-          shown = shown + 1
-        end
-      end
-      r.ImGui_Separator(ctx)
-    end
-
-    local disabled = (tag_text == "") or not (state.store and state.store.available and state.store.conn)
-    local pushed_disabled = false
-    if disabled and r.ImGui_BeginDisabled then
-      local ok_dis = pcall(function() r.ImGui_BeginDisabled(ctx, true) end)
-      if not ok_dis then pcall(function() r.ImGui_BeginDisabled(ctx) end) end
-      pushed_disabled = true
-    end
-
-    if r.ImGui_Button(ctx, "Add tag to pack samples", -1, 24) then
-      if sqlite_store and type(sqlite_store.set_manual_tag_for_pack) == "function" then
-        local ok, ret_ok, ret_msg = pcall(function()
-          return sqlite_store.set_manual_tag_for_pack({ db = state.store.conn }, pid, tag_text, true)
-        end)
-        if ok and ret_ok then
-          state.needs_reload_samples = true
-          set_runtime_notice("Tag added to pack.")
-        else
-          set_runtime_notice("Pack tag failed: " .. tostring(ret_msg or "unknown"))
-        end
-      end
-    end
-    if r.ImGui_Button(ctx, "Remove tag from pack samples", -1, 24) then
-      if sqlite_store and type(sqlite_store.set_manual_tag_for_pack) == "function" then
-        local ok, ret_ok, ret_msg = pcall(function()
-          return sqlite_store.set_manual_tag_for_pack({ db = state.store.conn }, pid, tag_text, false)
-        end)
-        if ok and ret_ok then
-          state.needs_reload_samples = true
-          set_runtime_notice("Tag removed from pack.")
-        else
-          set_runtime_notice("Pack tag failed: " .. tostring(ret_msg or "unknown"))
-        end
-      end
-    end
-    if pushed_disabled and r.ImGui_EndDisabled then pcall(function() r.ImGui_EndDisabled(ctx) end) end
-  end
-  if begin_has_window and is_imgui_ctx_valid() then
-    local ok_end_bulk, err_end_bulk = pcall(function() r.ImGui_End(ctx) end)
-    if not ok_end_bulk then    end
-  end
-  if open == false then
-    state.runtime.pack_bulk_tag_open = false
+  if ui_edit_popup and type(ui_edit_popup.draw_pack_bulk_tag_window) == "function" then
+    ui_edit_popup.draw_pack_bulk_tag_window()
   end
 end
 
+
 local function rebind_ui_modules_for_ctx()
-  if not (state and ctx) then return end
-  if ui_search and type(ui_search.setup) == "function" then
-    ui_search.setup({
-      r = r,
-      ctx = ctx,
-      state = state,
-      sqlite_store = sqlite_store,
-      safe_push_font = safe_push_font,
-      safe_pop_font = safe_pop_font,
-      calc_text_w = calc_text_w,
-      should_accept_toggle_click = should_accept_toggle_click,
-      parse_optional_number = tag_ops.parse_optional_number,
-      ui_input_text_with_hint = ui_input_text_with_hint,
-      window_flag_noresize = window_flag_noresize,
-      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
-      filter_tags_has = tag_ops.filter_tags_has,
-      filter_tags_clear_all = tag_ops.filter_tags_clear_all,
-      filter_tags_remove_at = tag_ops.filter_tags_remove_at,
-      filter_tags_remove_value = tag_ops.filter_tags_remove_value,
-      filter_tags_add_unique = tag_ops.filter_tags_add_unique,
-      filter_tags_exclude_has = tag_ops.filter_tags_exclude_has,
-      filter_tags_exclude_remove_at = tag_ops.filter_tags_exclude_remove_at,
-      filter_tags_exclude_remove_value = tag_ops.filter_tags_exclude_remove_value,
-      filter_tags_exclude_add_unique = tag_ops.filter_tags_exclude_add_unique,
-      draw_text_only_button = draw_text_only_button,
-      content_width = content_width,
-      tag_chip_label_short = tag_chip_label_short,
-      draw_wrapped_tag_chips = draw_wrapped_tag_chips,
-      calc_text_w_fallback = 42,
-      tag_chip_min_w = TAG_CHIP_MIN_W,
-      tag_chip_max_w_filter = TAG_CHIP_MAX_W_FILTER,
-      font_small = font_small,
-      get_project_bpm = get_project_bpm,
-      search_ui = C.SEARCH_UI,
-    })
-  end
-  if ui_pack and type(ui_pack.setup) == "function" then
-    ui_pack.setup({
-      r = r,
-      ctx = ctx,
-      state = state,
-      sqlite_store = sqlite_store,
-      cover_art = cover_art,
-      scan_controller = scan_controller,
-      font_small = font_small,
-      active_pack_strip_h = C.ACTIVE_PACK_STRIP_H,
-      active_pack_chip_pad_y = C.ACTIVE_PACK_CHIP_PAD_Y,
-      active_pack_scrollbar_size = C.ACTIVE_PACK_SCROLLBAR_SIZE,
-      pack_list_row_min_h = C.PACK_LIST_ROW_MIN_H,
-      pack_list_thumb = C.PACK_LIST_THUMB,
-      content_width = content_width,
-      safe_push_font = safe_push_font,
-      safe_pop_font = safe_pop_font,
-      window_flag_noresize = window_flag_noresize,
-      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
-      window_flag_always_vertical_scrollbar = window_flag_always_vertical_scrollbar,
-      ui_input_text_with_hint = ui_input_text_with_hint,
-      draw_rows_virtualized = draw_rows_virtualized,
-      filter_pack_ids_has = filter_pack_ids_has,
-      filter_pack_ids_toggle = filter_pack_ids_toggle,
-      filter_pack_ids_clear = filter_pack_ids_clear,
-      filter_pack_ids_remove_at = filter_pack_ids_remove_at,
-      pack_display_name_by_id = pack_display_name_by_id,
-      reload_pack_lists = reload_pack_lists,
-      set_runtime_notice = set_runtime_notice,
-      sanitize_root_path_input = sanitize_root_path_input,
-      set_persisted_splice_db_path = set_persisted_splice_db_path,
-      set_persisted_splice_relink_roots = set_persisted_splice_relink_roots,
-      pack_ui = C.PACK_UI,
-      use_native_tabs = supports_native_tab_colors(),
-    })
-  end
-  if ui_samples_list and type(ui_samples_list.setup) == "function" then
-    ui_samples_list.setup({
-      r = r,
-      ctx = ctx,
-      state = state,
-      sqlite_store = sqlite_store,
-      cover_art = cover_art,
-      sample_section_min_h = C.SAMPLE_SECTION_MIN_H,
-      sample_list_row_min_h = C.SAMPLE_LIST_ROW_MIN_H,
-      sample_list_thumb = C.SAMPLE_LIST_THUMB,
-      font_main = font_main,
-      window_flag_noresize = window_flag_noresize,
-      window_flag_noscrollbar = window_flag_noscrollbar,
-      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
-      safe_push_font = safe_push_font,
-      safe_pop_font = safe_pop_font,
-      draw_text_only_button = draw_text_only_button,
-      draw_rows_virtualized = draw_rows_virtualized,
-      imgui_mod_down = imgui_mod_down,
-      bulk_clear_all_selection = bulk_clear_all_selection,
-      bulk_set_row_selected = bulk_set_row_selected,
-      bulk_toggle_sample_id = bulk_toggle_sample_id,
-      bulk_selected_count = bulk_selected_count,
-      bulk_selected_ids_list = bulk_selected_ids_list,
-      set_selected_row = set_selected_row,
-      stop_preview = stop_preview,
-      set_runtime_notice = set_runtime_notice,
-      play_selected_sample_preview = play_selected_sample_preview,
-      begin_drag_for_row = begin_drag_for_row,
-      open_sample_edit_popup_for_row = M._open_sample_edit_popup_for_row,
-      open_sample_edit_popup_for_ids = M._open_sample_edit_popup_for_ids,
-      list_ui = C.LIST_UI,
-    })
-  end
-  if ui_samples_galaxy and type(ui_samples_galaxy.setup) == "function" then
-    ui_samples_galaxy.setup({
-      r = r,
-      ctx = ctx,
-      state = state,
-      sqlite_store = sqlite_store,
-      scan_controller = scan_controller,
-      galaxy_ops = galaxy_ops,
-      sample_section_min_h = C.SAMPLE_SECTION_MIN_H,
-      galaxy_pick_radius_px = GALAXY_PICK_RADIUS_PX,
-      window_flag_noresize = window_flag_noresize,
-      window_flag_noscrollbar = window_flag_noscrollbar,
-      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
-      content_width = content_width,
-      set_runtime_notice = set_runtime_notice,
-      bulk_clear_all_selection = bulk_clear_all_selection,
-      bulk_set_row_selected = bulk_set_row_selected,
-      set_selected_row = set_selected_row,
-      play_selected_sample_preview = play_selected_sample_preview,
-    })
-  end
+  setup_all_ui_modules()
 end
 
 local function loop()
@@ -5810,9 +4259,12 @@ local function loop()
         state.runtime.perf_acc.draw_detail = 0
       end
     end
-    handle_waveform_mouse()
-    -- D&D???????E??E??E???????????????
-    handle_drag_drop_insert()
+    if ui_dnd and type(ui_dnd.handle_waveform_mouse) == "function" then
+      ui_dnd.handle_waveform_mouse()
+    end
+    if ui_dnd and type(ui_dnd.handle_drag_drop_insert) == "function" then
+      ui_dnd.handle_drag_drop_insert()
+    end
     if state.runtime.perf_gate then
       state.runtime.perf_gfr_t0 = (r.time_precise and r.time_precise()) or os.clock()
     end
@@ -5925,61 +4377,7 @@ function M.run()
     r.SetExtState(XS.section, XS.heartbeat, tostring(now), false)
   end
   init_state()
-  if ui_samples_list and type(ui_samples_list.setup) == "function" then
-    ui_samples_list.setup({
-      r = r,
-      ctx = ctx,
-      state = state,
-      sqlite_store = sqlite_store,
-      cover_art = cover_art,
-      sample_section_min_h = C.SAMPLE_SECTION_MIN_H,
-      sample_list_row_min_h = C.SAMPLE_LIST_ROW_MIN_H,
-      sample_list_thumb = C.SAMPLE_LIST_THUMB,
-      font_main = font_main,
-      window_flag_noresize = window_flag_noresize,
-      window_flag_noscrollbar = window_flag_noscrollbar,
-      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
-      safe_push_font = safe_push_font,
-      safe_pop_font = safe_pop_font,
-      draw_text_only_button = draw_text_only_button,
-      draw_rows_virtualized = draw_rows_virtualized,
-      imgui_mod_down = imgui_mod_down,
-      bulk_clear_all_selection = bulk_clear_all_selection,
-      bulk_set_row_selected = bulk_set_row_selected,
-      bulk_toggle_sample_id = bulk_toggle_sample_id,
-      bulk_selected_count = bulk_selected_count,
-      bulk_selected_ids_list = bulk_selected_ids_list,
-      set_selected_row = set_selected_row,
-      stop_preview = stop_preview,
-      set_runtime_notice = set_runtime_notice,
-      play_selected_sample_preview = play_selected_sample_preview,
-      begin_drag_for_row = begin_drag_for_row,
-      open_sample_edit_popup_for_row = M._open_sample_edit_popup_for_row,
-      open_sample_edit_popup_for_ids = M._open_sample_edit_popup_for_ids,
-      list_ui = C.LIST_UI,
-    })
-  end
-  if ui_samples_galaxy and type(ui_samples_galaxy.setup) == "function" then
-    ui_samples_galaxy.setup({
-      r = r,
-      ctx = ctx,
-      state = state,
-      sqlite_store = sqlite_store,
-      scan_controller = scan_controller,
-      galaxy_ops = galaxy_ops,
-      sample_section_min_h = C.SAMPLE_SECTION_MIN_H,
-      galaxy_pick_radius_px = GALAXY_PICK_RADIUS_PX,
-      window_flag_noresize = window_flag_noresize,
-      window_flag_noscrollbar = window_flag_noscrollbar,
-      window_flag_noscroll_with_mouse = window_flag_noscroll_with_mouse,
-      content_width = content_width,
-      set_runtime_notice = set_runtime_notice,
-      bulk_clear_all_selection = bulk_clear_all_selection,
-      bulk_set_row_selected = bulk_set_row_selected,
-      set_selected_row = set_selected_row,
-      play_selected_sample_preview = play_selected_sample_preview,
-    })
-  end
+  setup_all_ui_modules()
 
   r.atexit(exit)
   r.defer(loop)

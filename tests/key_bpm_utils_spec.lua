@@ -1,0 +1,28 @@
+require("spec_helper")
+local key_bpm = require("lib.core.key_bpm_utils")
+
+describe("key_bpm_utils.parse_sample_bpm", function()
+  it("accepts normal BPM range", function()
+    assert.are.equal(120, key_bpm.parse_sample_bpm("120"))
+    assert.are.equal(90.5, key_bpm.parse_sample_bpm(90.5))
+  end)
+
+  it("rejects out of range", function()
+    assert.is_nil(key_bpm.parse_sample_bpm(10))
+    assert.is_nil(key_bpm.parse_sample_bpm(500))
+  end)
+end)
+
+describe("key_bpm_utils.normalize_sample_type", function()
+  it("normalizes aliases", function()
+    assert.are.equal("oneshot", key_bpm.normalize_sample_type("one-shot"))
+    assert.are.equal("loop", key_bpm.normalize_sample_type("loops"))
+  end)
+end)
+
+describe("key_bpm_utils.build_edit_key_text", function()
+  it("builds major and minor strings", function()
+    assert.are.equal("C major", key_bpm.build_edit_key_text("C", "major"))
+    assert.are.equal("F# minor", key_bpm.build_edit_key_text("Gb", "minor"))
+  end)
+end)

@@ -38,3 +38,5 @@ jobs:
               exit 1
             fi
           fi
+      - name: Verify @provides vs index.xml (latest version)
+        run: python3 scripts/verify_index_provides.py --version 0.2.9

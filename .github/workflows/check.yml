@@ -25,3 +25,26 @@ jobs:
             echo "index.xml must list src/*.lua and src/python/* via <source> rows (file=\"src/: $n_file, url: $n_url)."
             exit 1
           fi
+      - name: Verify @provides vs index.xml (latest version)
+        run: python3 scripts/verify_index_provides.py --version 0.2.9
+  lua-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch repository
+        uses: actions/checkout@v4
+      - name: Install Lua toolchain
+        run: |
+          sudo apt-get install -yy lua5.4 luarocks
+          luarocks install luacheck
+          luarocks install busted
+      - name: Luacheck (static analysis)
+        run: |
+          luacheck SampleLodeManager/src --no-color
+          luacheck tests --no-color
+      - name: Syntax check (luac -p)
+        run: |
+          find SampleLodeManager/src -name '*.lua' -print0 | while IFS= read -r -d '' f; do
+            luac5.4 -p "$f" || exit 1
+          done
+      - name: Busted unit tests
+        run: busted --verbose -o TAP

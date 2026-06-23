@@ -1,4 +1,4 @@
--- @noindex
+﻿-- @noindex
 local r = reaper
 
 local M = {}
@@ -9,52 +9,18 @@ do
   if ok then resource_paths = mod end
 end
 
+local tag_inference = nil
+local python_worker = nil
+do
+  local ok, mod = pcall(require, "lib.db.tag_inference")
+  if ok then tag_inference = mod end
+end
+do
+  local ok, mod = pcall(require, "lib.db.python_worker")
+  if ok then python_worker = mod end
+end
+
 local sep = package.config:sub(1, 1)
--- Safety default: Phase C audio rerank is expensive when called per-sample.
--- Keep disabled unless reworked to true batch/incremental processing.
-local ENABLE_PHASE_C_AUDIO_RERANK = false
--- UMAP feature preset for quick experimentation.
--- "core5" | "no_mfcc" | "no_tonal" | "with_flatness" | "spectral_only" | "envelope_only"
-local PHASE_E_PRESET = "core5"
-local PHASE_E_PRESET_ALLOWED = {
-  core5 = true,
-  no_mfcc = true,
-  no_tonal = true,
-  with_flatness = true,
-  spectral_only = true,
-  envelope_only = true,
-}
--- Min count of numeric (non-nil) fields in the 10-vector to send a row to phase_e (1 = effectively off).
-local PHASE_E_MIN_VALID_FEATURES = 1
-local PHASE_E_NEAR_NEUTRAL_EPS = 0.03
-local PHASE_E_NEAR_NEUTRAL_MIN_COUNT = 8
-local PHASE_E_LAST_INFO = {
-  mode = "unknown",
-  rows = 0,
-  dims = 0,
-  dropped_low_valid = 0,
-  dropped_near_neutral = 0,
-  excluded_low_valid_ids = "",
-  excluded_near_neutral_ids = "",
-  min_valid_used = 0,
-}
-local GALAXY_EMBED_PROFILE_VARIANTS = {
-  { key = "balanced", umap_neighbors = 48, umap_min_dist = 0.30 },
-}
-
-local function work_paths(stem)
-  if resource_paths then
-    return resource_paths.work_pair(r, stem)
-  end
-  local base = r.GetResourcePath() .. sep .. "SampleLodeManager_" .. stem
-  return { in_path = base .. "_in.tsv", out_path = base .. "_out.tsv" }
-end
-
-local function cleanup_work_files(paths)
-  if resource_paths then
-    resource_paths.remove_paths(paths)
-  end
-end
 
 local function sql_quote(str)
   if str == nil then return "NULL" end
@@ -64,26 +30,11 @@ local function sql_quote(str)
 end
 
 local function sanitize_root_path(root_path)
+  if resource_paths and type(resource_paths.sanitize_root_path) == "function" then
+    return resource_paths.sanitize_root_path(root_path, { empty_as_nil = true })
+  end
   if root_path == nil then return nil end
-  local s = tostring(root_path)
-  s = s:gsub("\r", ""):gsub("\n", "")
-  s = s:gsub("^%s+", ""):gsub("%s+$", "")
-  if #s >= 2 then
-    local first = s:sub(1, 1)
-    local last = s:sub(-1)
-    if (first == '"' and last == '"') or (first == "'" and last == "'") then
-      s = s:sub(2, -2)
-      s = s:gsub("^%s+", ""):gsub("%s+$", "")
-    end
-  end
-  if s ~= "" then
-    local drive = s:match("^([A-Za-z]:)[/\\]?$")
-    if drive then
-      s = drive .. sep
-    else
-      s = s:gsub("[/\\]+$", "")
-    end
-  end
+  local s = tostring(root_path):gsub("^%s+", ""):gsub("%s+$", "")
   if s == "" then return nil end
   return s
 end
@@ -152,156 +103,14 @@ local function file_size_bytes(path)
   return 0
 end
 
-local function guess_type_and_bpm_and_key(filename)
-  local fn = (filename or ""):lower()
-  local padded = " " .. fn .. " "
-
-  local function parse_bpm_from_match(raw)
-    local n = tonumber(raw)
-    if not n then return nil end
-    if n < 40 or n > 240 then return nil end
-    return n
-  end
-
-  local function has_token(tokens, token)
-    return tokens[token] == true
-  end
-
-  local function normalize_key_root(root, accidental)
-    local base = string.upper(root or "")
-    local acc = accidental or ""
-    local flat_to_sharp = {
-      Db = "C#",
-      Eb = "D#",
-      Gb = "F#",
-      Ab = "G#",
-      Bb = "A#",
-      Cb = "B",
-      Fb = "E",
-    }
-    local merged = base .. acc
-    return flat_to_sharp[merged] or merged
-  end
-
-  local token_set = {}
-  for token in fn:gmatch("[a-z0-9#b]+") do
-    token_set[token] = true
-  end
-
-  -- type: token-based classification to avoid accidental substring matches.
-  local loop_tokens = { "loop", "loops", "lp" }
-  local oneshot_tokens = { "oneshot", "one", "shot", "one_shot", "one-shot", "hit", "stab" }
-  local loop_score = 0
-  local oneshot_score = 0
-  for _, tk in ipairs(loop_tokens) do
-    if has_token(token_set, tk) then loop_score = loop_score + 1 end
-  end
-  for _, tk in ipairs(oneshot_tokens) do
-    if has_token(token_set, tk) then oneshot_score = oneshot_score + 1 end
-  end
-  -- User-facing policy:
-  -- - any "loop" substring should bias toward loop
-  -- - files with BPM in name should also bias toward loop unless fill-like wording is present
-  if fn:find("loop", 1, true) then
-    loop_score = loop_score + 1
-  end
-
-  -- bpm: prefer explicit bpm notation, fallback to numeric token in range.
-  local bpm = nil
-  local bpm_conf = nil
-  do
-    local explicit = fn:match("(%d%d?%d)%s*[_%-]?%s*bpm")
-      or fn:match("bpm%s*[_%-]?%s*(%d%d?%d)")
-      or fn:match("[_%-](%d%d?%d)bpm")
-    bpm = parse_bpm_from_match(explicit)
-    if bpm then
-      bpm_conf = 0.8
-    else
-      for token in fn:gmatch("%d%d?%d") do
-        local cand = parse_bpm_from_match(token)
-        if cand then
-          bpm = cand
-          bpm_conf = 0.35
-          break
-        end
-      end
-    end
-  end
-
-  local has_fill_like = fn:find("fill", 1, true) ~= nil
-  if bpm and not has_fill_like then
-    loop_score = loop_score + 1
-  end
-
-  local class_primary = "oneshot"
-  local class_conf = 0.2
-  if loop_score > oneshot_score and loop_score > 0 then
-    class_primary = "loop"
-    class_conf = 0.7
-  elseif oneshot_score > loop_score and oneshot_score > 0 then
-    class_primary = "oneshot"
-    class_conf = 0.7
-  elseif fn:find("loop", 1, true) then
-    class_primary = "loop"
-    class_conf = 0.55
-  end
-
-  -- key: constrained patterns with non-letter boundaries.
-  local key_root = nil
-  local key_mode = nil
-  local key_conf = nil
-  do
-    local root, acc, mode = padded:match("[^%a]([a-g])([#b]?)[%s_%-]*(major|minor)[^%a]")
-    if root then
-      key_root = normalize_key_root(root, acc)
-      key_mode = mode
-      key_conf = 0.8
-    end
-  end
-
-  if not key_root then
-    local root, acc, mode = padded:match("[^%a]([a-g])([#b]?)(maj|min)[^%a]")
-    if root then
-      key_root = normalize_key_root(root, acc)
-      key_mode = (mode == "maj") and "major" or "minor"
-      key_conf = 0.7
-    end
-  end
-
-  if not key_root then
-    local root, acc = padded:match("[^%a]([a-g])([#b]?)m[^%a]")
-    if root then
-      key_root = normalize_key_root(root, acc)
-      key_mode = "minor"
-      key_conf = 0.55
-    end
-  end
-
-  -- Root-only key token, e.g. "(C)" or "_F#_". Mode remains unknown.
-  if not key_root then
-    local root, acc = padded:match("[^%a]([a-g])([#b]?)[^%a]")
-    if root then
-      key_root = normalize_key_root(root, acc)
-      key_mode = nil
-      key_conf = 0.4
-    end
-  end
-
-  local key_estimate = nil
-  if key_root and key_mode then
-    key_estimate = key_root .. " " .. key_mode
-  elseif key_root then
-    key_estimate = key_root
-  end
-
-  return {
-    class_primary = class_primary,
-    class_confidence = class_conf,
-    bpm = bpm,
-    bpm_confidence = bpm_conf,
-    key_estimate = key_estimate,
-    key_confidence = key_conf,
-  }
+if python_worker and type(python_worker.setup) == "function" then
+  python_worker.setup({
+    r = r,
+    resource_paths = resource_paths,
+    sep = sep,
+    exec_safe = exec_safe,
+    sql_quote = sql_quote,
+  })
 end
 
 local function is_audio_ext(path)
@@ -645,716 +454,6 @@ local function get_or_create_pack(db, root_id, name, pack_path, source_type)
   return id
 end
 
-local function normalize_key_estimate(audio_key, chord_type)
-  if not audio_key or tostring(audio_key) == "" then return nil end
-  local key = tostring(audio_key):lower()
-  key = key:gsub("^%s+", ""):gsub("%s+$", "")
-  if key == "" then return nil end
-
-  local root = key:sub(1, 1):upper() .. key:sub(2)
-  local mode = nil
-  if chord_type ~= nil then
-    local m = tostring(chord_type):lower()
-    if m == "major" or m == "minor" then
-      mode = m
-    end
-  end
-  if mode then
-    return root .. " " .. mode
-  end
-  return root
-end
-
-local function split_csv_tags(tags_text)
-  local out = {}
-  if not tags_text or tostring(tags_text) == "" then return out end
-  for token in tostring(tags_text):gmatch("([^,]+)") do
-    local t = token:gsub("^%s+", ""):gsub("%s+$", "")
-    if t ~= "" then out[#out + 1] = t end
-  end
-  return out
-end
-
-local function get_python_phase_a_script_path()
-  local src = debug.getinfo(1, "S")
-  local source = src and src.source or ""
-  if source:sub(1, 1) == "@" then
-    source = source:sub(2)
-  end
-  if source == "" then return nil end
-  local dir = source:gsub("[/\\][^/\\]+$", "")
-  if dir == "" then return nil end
-  return dir .. sep .. ".." .. sep .. ".." .. sep .. "python" .. sep .. "phase_a_filename_nlp.py"
-end
-
-local function get_python_phase_b2_script_path()
-  local src = debug.getinfo(1, "S")
-  local source = src and src.source or ""
-  if source:sub(1, 1) == "@" then
-    source = source:sub(2)
-  end
-  if source == "" then return nil end
-  local dir = source:gsub("[/\\][^/\\]+$", "")
-  if dir == "" then return nil end
-  return dir .. sep .. ".." .. sep .. ".." .. sep .. "python" .. sep .. "phase_b2_audio_hints.py"
-end
-
-local function get_python_auto_alias_script_path()
-  local src = debug.getinfo(1, "S")
-  local source = src and src.source or ""
-  if source:sub(1, 1) == "@" then
-    source = source:sub(2)
-  end
-  if source == "" then return nil end
-  local dir = source:gsub("[/\\][^/\\]+$", "")
-  if dir == "" then return nil end
-  return dir .. sep .. ".." .. sep .. ".." .. sep .. "python" .. sep .. "auto_alias_suggest.py"
-end
-
-local function get_python_phase_c_script_path()
-  local src = debug.getinfo(1, "S")
-  local source = src and src.source or ""
-  if source:sub(1, 1) == "@" then
-    source = source:sub(2)
-  end
-  if source == "" then return nil end
-  local dir = source:gsub("[/\\][^/\\]+$", "")
-  if dir == "" then return nil end
-  return dir .. sep .. ".." .. sep .. ".." .. sep .. "python" .. sep .. "phase_c_rerank.py"
-end
-
-local function get_python_phase_d_script_path()
-  local src = debug.getinfo(1, "S")
-  local source = src and src.source or ""
-  if source:sub(1, 1) == "@" then
-    source = source:sub(2)
-  end
-  if source == "" then return nil end
-  local dir = source:gsub("[/\\][^/\\]+$", "")
-  if dir == "" then return nil end
-  return dir .. sep .. ".." .. sep .. ".." .. sep .. "python" .. sep .. "phase_d_audio_features.py"
-end
-
-local function get_python_phase_e_script_path()
-  local src = debug.getinfo(1, "S")
-  local source = src and src.source or ""
-  if source:sub(1, 1) == "@" then
-    source = source:sub(2)
-  end
-  if source == "" then return nil end
-  local dir = source:gsub("[/\\][^/\\]+$", "")
-  if dir == "" then return nil end
-  return dir .. sep .. ".." .. sep .. ".." .. sep .. "python" .. sep .. "phase_e_embed_umap.py"
-end
-
-local function split_csv_simple(text)
-  local out = {}
-  local s = tostring(text or "")
-  if s == "" then return out end
-  for token in s:gmatch("([^,]+)") do
-    local t = token:gsub("^%s+", ""):gsub("%s+$", "")
-    if t ~= "" then out[#out + 1] = t end
-  end
-  return out
-end
-
-local function tokenize_words(text)
-  local out = {}
-  local seen = {}
-  local s = tostring(text or ""):lower()
-  for tok in s:gmatch("[a-z0-9#]+") do
-    if #tok >= 3 and not seen[tok] then
-      seen[tok] = true
-      out[#out + 1] = tok
-    end
-  end
-  return out
-end
-
-local function collect_unknown_tokens_from_entries(entries, splice_vocab, alias_map)
-  local out = {}
-  local seen = {}
-  local skip = {
-    bpm = true, loop = true, loops = true, one = true, shot = true,
-    drum = true, drums = true, wav = true, aiff = true, flac = true, mp3 = true,
-  }
-  for _, e in ipairs(entries or {}) do
-    local fn = tostring((e and e.filename) or ""):lower()
-    for tok in fn:gmatch("[a-z0-9#]+") do
-      if #tok >= 4 and not skip[tok] and not tok:find("%d") then
-        local known = (splice_vocab and splice_vocab[tok]) or (alias_map and alias_map[tok])
-        if not known and not seen[tok] then
-          seen[tok] = true
-          out[#out + 1] = tok
-        end
-      end
-    end
-  end
-  return out
-end
-
-local function run_python_auto_alias_batch(unknown_tokens, splice_vocab)
-  local out = {}
-  if type(unknown_tokens) ~= "table" or #unknown_tokens == 0 then return out end
-  if type(splice_vocab) ~= "table" or next(splice_vocab) == nil then return out end
-  if not r.ExecProcess or not r.GetResourcePath then return out end
-
-  local script = get_python_auto_alias_script_path()
-  if not script then return out end
-  local sf = io.open(script, "rb")
-  if not sf then return out end
-  sf:close()
-
-  local in_path = (resource_paths and resource_paths.work_file(r, "auto_alias", "_unknown.tsv"))
-    or (r.GetResourcePath() .. sep .. "SampleLodeManager_auto_alias_unknown.tsv")
-  local vocab_path = (resource_paths and resource_paths.work_file(r, "auto_alias", "_vocab.tsv"))
-    or (r.GetResourcePath() .. sep .. "SampleLodeManager_auto_alias_vocab.tsv")
-  local out_path = (resource_paths and resource_paths.work_file(r, "auto_alias", "_out.tsv"))
-    or (r.GetResourcePath() .. sep .. "SampleLodeManager_auto_alias_out.tsv")
-
-  local f1 = io.open(in_path, "wb")
-  if not f1 then return out end
-  for _, tok in ipairs(unknown_tokens) do
-    f1:write(tostring(tok), "\n")
-  end
-  f1:close()
-
-  local f2 = io.open(vocab_path, "wb")
-  if not f2 then return out end
-  for tag, _cnt in pairs(splice_vocab) do
-    f2:write(tostring(tag), "\n")
-  end
-  f2:close()
-
-  local cmd = string.format('python "%s" --unknown "%s" --vocab "%s" --output "%s"', script, in_path, vocab_path, out_path)
-  local ok_exec, _ = pcall(function()
-    return r.ExecProcess(cmd, 10000)
-  end)
-  if not ok_exec then
-    cleanup_work_files({ in_path, vocab_path, out_path })
-    return out
-  end
-
-  local rf = io.open(out_path, "rb")
-  if not rf then
-    cleanup_work_files({ in_path, vocab_path, out_path })
-    return out
-  end
-  for line in rf:lines() do
-    local alias, canon, conf = line:match("^([^\t]+)\t([^\t]+)\t([%d%.]+)$")
-    local c = tonumber(conf or "")
-    if alias and canon and c then
-      out[#out + 1] = { alias = alias, canonical = canon, confidence = c }
-    end
-  end
-  rf:close()
-  cleanup_work_files({ in_path, vocab_path, out_path })
-  return out
-end
-
-local function apply_auto_alias_rows(db, rows)
-  if not db or type(rows) ~= "table" or #rows == 0 then return 0 end
-  local now = os.time()
-  local changed = 0
-  for _, row in ipairs(rows) do
-    local a = tostring(row.alias or ""):lower()
-    local c = tostring(row.canonical or ""):lower()
-    local conf = tonumber(row.confidence or 0) or 0
-    if a ~= "" and c ~= "" and conf >= 0.82 then
-      exec_safe(db, string.format([[
-        INSERT OR IGNORE INTO tag_aliases(alias, canonical_tag, source, created_at, confidence, last_used_at, enabled)
-        VALUES(%s, %s, 'auto', %d, %s, %d, 1);
-      ]], sql_quote(a), sql_quote(c), now, tostring(conf), now))
-      exec_safe(db, string.format([[
-        UPDATE tag_aliases
-        SET canonical_tag=%s, confidence=%s, last_used_at=%d, enabled=1
-        WHERE alias=%s AND source='auto';
-      ]], sql_quote(c), tostring(conf), now, sql_quote(a)))
-      changed = changed + 1
-    end
-  end
-  return changed
-end
-
-local function to_set(list)
-  local s = {}
-  for _, v in ipairs(list or {}) do
-    s[v] = true
-  end
-  return s
-end
-
-local function jaccard_tokens(a, b)
-  local sa = to_set(a)
-  local sb = to_set(b)
-  local inter, uni = 0, 0
-  for k, _ in pairs(sa) do
-    uni = uni + 1
-    if sb[k] then inter = inter + 1 end
-  end
-  for k, _ in pairs(sb) do
-    if not sa[k] then uni = uni + 1 end
-  end
-  if uni == 0 then return 0 end
-  return inter / uni
-end
-
-local function run_python_phase_a_batch(rows, pack_name)
-  local out = {}
-  if type(rows) ~= "table" or #rows == 0 then return out end
-  if not r.ExecProcess or not r.GetResourcePath then return out end
-
-  local script = get_python_phase_a_script_path()
-  if not script then return out end
-  local sf = io.open(script, "rb")
-  if not sf then return out end
-  sf:close()
-
-  local pair = work_paths("phase_a")
-  local in_path = pair.in_path
-  local out_path = pair.out_path
-  local f = io.open(in_path, "wb")
-  if not f then return out end
-  for i, row in ipairs(rows) do
-    local fn = tostring((row and row.filename) or ""):gsub("[\t\r\n]", " ")
-    local fp = tostring((row and row.full_path) or ""):gsub("[\t\r\n]", " ")
-    local pk = tostring(pack_name or ""):gsub("[\t\r\n]", " ")
-    f:write(tostring(i), "\t", fn, "\t", fp, "\t", pk, "\n")
-  end
-  f:close()
-
-  local cmd = string.format('python "%s" --input "%s" --output "%s"', script, in_path, out_path)
-  local ok_exec, _ = pcall(function()
-    return r.ExecProcess(cmd, 8000)
-  end)
-  if not ok_exec then
-    cleanup_work_files({ in_path, out_path })
-    return out
-  end
-
-  local rf = io.open(out_path, "rb")
-  if not rf then
-    cleanup_work_files({ in_path, out_path })
-    return out
-  end
-  for line in rf:lines() do
-    local idx_text, tags_csv = line:match("^(%d+)\t(.*)$")
-    local idx = tonumber(idx_text or "")
-    if idx and idx > 0 then
-      out[idx] = split_csv_simple(tags_csv)
-    end
-  end
-  rf:close()
-  cleanup_work_files({ in_path, out_path })
-  return out
-end
-
-local function run_python_phase_b2_batch(rows, pack_name)
-  local out = {}
-  if type(rows) ~= "table" or #rows == 0 then return out end
-  if not r.ExecProcess or not r.GetResourcePath then return out end
-
-  local script = get_python_phase_b2_script_path()
-  if not script then return out end
-  local sf = io.open(script, "rb")
-  if not sf then return out end
-  sf:close()
-
-  local pair = work_paths("phase_b2")
-  local in_path = pair.in_path
-  local out_path = pair.out_path
-  local f = io.open(in_path, "wb")
-  if not f then return out end
-  for i, row in ipairs(rows) do
-    local fn = tostring((row and row.filename) or ""):gsub("[\t\r\n]", " ")
-    local fp = tostring((row and row.full_path) or ""):gsub("[\t\r\n]", " ")
-    local pk = tostring(pack_name or ""):gsub("[\t\r\n]", " ")
-    f:write(tostring(i), "\t", fn, "\t", fp, "\t", pk, "\n")
-  end
-  f:close()
-
-  local cmd = string.format('python "%s" --input "%s" --output "%s"', script, in_path, out_path)
-  local ok_exec, _ = pcall(function()
-    return r.ExecProcess(cmd, 10000)
-  end)
-  if not ok_exec then
-    cleanup_work_files({ in_path, out_path })
-    return out
-  end
-
-  local rf = io.open(out_path, "rb")
-  if not rf then
-    cleanup_work_files({ in_path, out_path })
-    return out
-  end
-  for line in rf:lines() do
-    local idx_text, tags_csv = line:match("^(%d+)\t(.*)$")
-    local idx = tonumber(idx_text or "")
-    if idx and idx > 0 then
-      out[idx] = split_csv_simple(tags_csv)
-    end
-  end
-  rf:close()
-  cleanup_work_files({ in_path, out_path })
-  return out
-end
-
-local function run_python_phase_d_batch(rows, pack_name)
-  local out = {}
-  if type(rows) ~= "table" or #rows == 0 then return out end
-  if not r.ExecProcess or not r.GetResourcePath then return out end
-
-  local script = get_python_phase_d_script_path()
-  if not script then return out end
-  local sf = io.open(script, "rb")
-  if not sf then return out end
-  sf:close()
-
-  local pair = work_paths("phase_d")
-  local in_path = pair.in_path
-  local out_path = pair.out_path
-  local f = io.open(in_path, "wb")
-  if not f then return out end
-  local wrote = 0
-  for i, row in ipairs(rows) do
-    if row and row.skip_phase_d == true then
-      goto continue
-    end
-    if not (row and row.force_phase_d == true) then
-      -- Speed mode: analyze only one-shot candidates, skip likely loops.
-      local fn_for_guess = tostring((row and row.filename) or "")
-      local g = guess_type_and_bpm_and_key(fn_for_guess)
-      local class_guess = g and tostring(g.class_primary or ""):lower() or ""
-      if class_guess ~= "oneshot" then
-        goto continue
-      end
-    end
-    local fn = tostring((row and row.filename) or ""):gsub("[\t\r\n]", " ")
-    local fp = tostring((row and row.full_path) or ""):gsub("[\t\r\n]", " ")
-    local pk = tostring(pack_name or ""):gsub("[\t\r\n]", " ")
-    f:write(tostring(i), "\t", fn, "\t", fp, "\t", pk, "\n")
-    wrote = wrote + 1
-    ::continue::
-  end
-  f:close()
-  if wrote == 0 then return out end
-
-  local cmd = string.format('python "%s" --input "%s" --output "%s"', script, in_path, out_path)
-  local ok_exec, _ = pcall(function()
-    -- Spectral feature extraction over large libraries can take several minutes.
-    return r.ExecProcess(cmd, 900000)
-  end)
-  if not ok_exec then
-    cleanup_work_files({ in_path, out_path })
-    return out
-  end
-
-  local rf = io.open(out_path, "rb")
-  if not rf then
-    cleanup_work_files({ in_path, out_path })
-    return out
-  end
-  for line in rf:lines() do
-    local clean = tostring(line or ""):gsub("\r$", "")
-    local idx_t, b_t, n_t, a_t, d_t, t_t, c_t, r_t, bw_t, fl_t, mf_t, inh_t, met_t =
-      clean:match("^(%d+)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
-    if not idx_t then
-      -- Backward compatibility: old phase_d output (idx + 10 values).
-      idx_t, b_t, n_t, a_t, d_t, t_t, c_t, r_t, bw_t, fl_t, mf_t =
-      clean:match("^(%d+)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
-    end
-    local idx = tonumber(idx_t or "")
-    if idx and idx > 0 then
-      local b = tonumber(b_t or "")
-      local n = tonumber(n_t or "")
-      local a = tonumber(a_t or "")
-      local d = tonumber(d_t or "")
-      local t = tonumber(t_t or "")
-      local c = tonumber(c_t or "")
-      local r0 = tonumber(r_t or "")
-      local bw = tonumber(bw_t or "")
-      local fl = tonumber(fl_t or "")
-      local mf = tonumber(mf_t or "")
-      local inh = tonumber(inh_t or "")
-      local met = tonumber(met_t or "")
-      out[idx] = {
-        brightness = b,
-        noisiness = n,
-        attack_sharpness = a,
-        decay_length = d,
-        tonalness = t,
-        spectral_centroid_norm = c,
-        spectral_rolloff_norm = r0,
-        spectral_bandwidth_norm = bw,
-        spectral_flatness = fl,
-        mfcc_timbre_norm = mf,
-        inharmonicity = inh,
-        metallicity = met,
-      }
-    end
-  end
-  rf:close()
-  cleanup_work_files({ in_path, out_path })
-  return out
-end
-
-local function table_count_keys(t)
-  if type(t) ~= "table" then return 0 end
-  local n = 0
-  for _ in pairs(t) do n = n + 1 end
-  return n
-end
-
-local PHASE_D_FEATURE_KEYS = {
-  "brightness", "noisiness", "attack_sharpness", "decay_length", "tonalness",
-  "spectral_centroid_norm", "spectral_rolloff_norm", "spectral_bandwidth_norm", "spectral_flatness", "mfcc_timbre_norm",
-}
-
-local function phase_d_row_complete(feat)
-  if type(feat) ~= "table" then return false end
-  for _, k in ipairs(PHASE_D_FEATURE_KEYS) do
-    if tonumber(feat[k]) == nil then return false end
-  end
-  return true
-end
-
-local function get_existing_phase_d_for_entries(db, entries)
-  local out = {}
-  if not db or type(entries) ~= "table" then return out end
-  for i, e in ipairs(entries) do
-    local sid = tonumber(e and e.sample_id)
-    if sid and sid > 0 then
-      for row in db:nrows(string.format([[
-        SELECT brightness, noisiness, attack_sharpness, decay_length, tonalness,
-               spectral_centroid_norm, spectral_rolloff_norm, spectral_bandwidth_norm, spectral_flatness,
-               mfcc_timbre_norm
-        FROM analysis WHERE sample_id=%d LIMIT 1;
-      ]], sid)) do
-        out[i] = {
-          brightness = row.brightness or row[1],
-          noisiness = row.noisiness or row[2],
-          attack_sharpness = row.attack_sharpness or row[3],
-          decay_length = row.decay_length or row[4],
-          tonalness = row.tonalness or row[5],
-          spectral_centroid_norm = row.spectral_centroid_norm or row[6],
-          spectral_rolloff_norm = row.spectral_rolloff_norm or row[7],
-          spectral_bandwidth_norm = row.spectral_bandwidth_norm or row[8],
-          spectral_flatness = row.spectral_flatness or row[9],
-          mfcc_timbre_norm = row.mfcc_timbre_norm or row[10],
-        }
-        break
-      end
-    end
-  end
-  return out
-end
-
-local function run_python_phase_e_batch(phase_d_by_index, pe_opts)
-  pe_opts = type(pe_opts) == "table" and pe_opts or {}
-  local min_valid_needed = tonumber(pe_opts.min_valid_features) or PHASE_E_MIN_VALID_FEATURES
-  if min_valid_needed < 1 then min_valid_needed = 1 end
-  if min_valid_needed > 10 then min_valid_needed = 10 end
-  -- Off unless opts explicitly set exclude_near_neutral = true (legacy strict mode).
-  local exclude_near_neutral = pe_opts.exclude_near_neutral == true
-  local near_eps = tonumber(pe_opts.near_neutral_eps) or PHASE_E_NEAR_NEUTRAL_EPS
-  local near_min_count = tonumber(pe_opts.near_neutral_min_count) or PHASE_E_NEAR_NEUTRAL_MIN_COUNT
-  local max_excluded_ids = math.max(1, math.min(24, tonumber(pe_opts.max_excluded_ids) or 8))
-  local umap_neighbors = math.floor(tonumber(pe_opts.umap_neighbors) or 0)
-  local umap_min_dist = tonumber(pe_opts.umap_min_dist) or -1.0
-
-  local out = {}
-  if type(phase_d_by_index) ~= "table" then return out end
-  if not r.ExecProcess or not r.GetResourcePath then return out end
-
-  local script = get_python_phase_e_script_path()
-  if not script then return out end
-  local sf = io.open(script, "rb")
-  if not sf then return out end
-  sf:close()
-
-  local pair = work_paths("phase_e")
-  local in_path = pair.in_path
-  local out_path = pair.out_path
-  local meta_path = (resource_paths and resource_paths.work_file(r, "phase_e", "_meta.txt"))
-    or (r.GetResourcePath() .. sep .. "SampleLodeManager_phase_e_meta.txt")
-  local f = io.open(in_path, "wb")
-  if not f then return out end
-  local dropped_low_valid = 0
-  local dropped_near_neutral = 0
-  local dropped_low_ids = {}
-  local dropped_nn_ids = {}
-  for idx, feat in pairs(phase_d_by_index) do
-    local idn = tonumber(idx)
-    if idn then
-      local valid = 0
-      local function pick(v)
-        local n = tonumber(v)
-        if n ~= nil then valid = valid + 1 end
-        return n
-      end
-      local b0 = pick(feat and feat.brightness)
-      local n0 = pick(feat and feat.noisiness)
-      local a0 = pick(feat and feat.attack_sharpness)
-      local d0 = pick(feat and feat.decay_length)
-      local t0 = pick(feat and feat.tonalness)
-      local c0 = pick(feat and feat.spectral_centroid_norm)
-      local r00 = pick(feat and feat.spectral_rolloff_norm)
-      local bw0 = pick(feat and feat.spectral_bandwidth_norm)
-      local fl0 = pick(feat and feat.spectral_flatness)
-      local mf0 = pick(feat and feat.mfcc_timbre_norm)
-      if valid < min_valid_needed then
-        dropped_low_valid = dropped_low_valid + 1
-        if #dropped_low_ids < max_excluded_ids then
-          dropped_low_ids[#dropped_low_ids + 1] = idn
-        end
-        goto continue
-      end
-      -- Fill missing values with neutral defaults to avoid dropping rows.
-      local b = b0 or 0.5
-      local n = n0 or 0.5
-      local a = a0 or 0.5
-      local d = d0 or 0.5
-      local t = t0 or 0.5
-      local c = c0 or 0.5
-      local r0 = r00 or c
-      local bw = bw0 or n
-      local fl = fl0 or n
-      local mf = mf0 or 0.5
-      local near = 0
-      for _, v in ipairs({ b, n, a, d, t, c, r0, bw, fl, mf }) do
-        if math.abs(tonumber(v) - 0.5) < near_eps then
-          near = near + 1
-        end
-      end
-      if exclude_near_neutral and near >= near_min_count then
-        dropped_near_neutral = dropped_near_neutral + 1
-        if #dropped_nn_ids < max_excluded_ids then
-          dropped_nn_ids[#dropped_nn_ids + 1] = idn
-        end
-        goto continue
-      end
-      -- Pass full 10-feature vector; phase_e preset selects subset.
-      -- [brightness, noisiness, attack, decay, tonalness, centroid, rolloff, bandwidth, flatness, mfcc]
-      f:write(string.format(
-        "%d\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\t%.6f\n",
-        idn, b, n, a, d, t, c, r0, bw, fl, mf
-      ))
-    end
-    ::continue::
-  end
-  f:close()
-
-  -- Prevent stale output reuse when python fails.
-  pcall(function() os.remove(out_path) end)
-  pcall(function() os.remove(meta_path) end)
-  local cmd = string.format(
-    'python "%s" --input "%s" --output "%s" --preset "%s" --meta "%s" --neighbors %d --min-dist %s',
-    script, in_path, out_path, tostring(PHASE_E_PRESET or "core5"), meta_path, umap_neighbors, tostring(umap_min_dist)
-  )
-  local ok_exec, _ = pcall(function()
-    -- UMAP import/JIT can also be slow on large inputs.
-    return r.ExecProcess(cmd, 600000)
-  end)
-  if not ok_exec then
-    cleanup_work_files({ in_path, out_path, meta_path })
-    return out
-  end
-
-  PHASE_E_LAST_INFO = {
-    mode = "unknown",
-    rows = 0,
-    dims = 0,
-    dropped_low_valid = dropped_low_valid,
-    dropped_near_neutral = dropped_near_neutral,
-    excluded_low_valid_ids = table.concat(dropped_low_ids, ","),
-    excluded_near_neutral_ids = table.concat(dropped_nn_ids, ","),
-    min_valid_used = min_valid_needed,
-  }
-  local mf = io.open(meta_path, "rb")
-  if mf then
-    for line in mf:lines() do
-      local k, v = tostring(line or ""):match("^([a-z_]+)=(.*)$")
-      if k == "mode" then PHASE_E_LAST_INFO.mode = tostring(v or "unknown")
-      elseif k == "rows" then PHASE_E_LAST_INFO.rows = tonumber(v or "") or 0
-      elseif k == "dims" then PHASE_E_LAST_INFO.dims = tonumber(v or "") or 0
-      end
-    end
-    mf:close()
-  end
-
-  local rf = io.open(out_path, "rb")
-  if not rf then return out end
-  for line in rf:lines() do
-    line = tostring(line or ""):gsub("\r$", "")
-    local idx_t, x_t, y_t = line:match("^(%d+)\t([%+%-]?[%d%.eE]+)\t([%+%-]?[%d%.eE]+)$")
-    local idx = tonumber(idx_t or "")
-    local x = tonumber(x_t or "")
-    local y = tonumber(y_t or "")
-    if idx and x and y then
-      out[idx] = { embed_x = x, embed_y = y }
-    end
-  end
-  rf:close()
-  cleanup_work_files({ in_path, out_path, meta_path })
-  return out
-end
-
-local function run_python_phase_c_single(file_path, candidate_tags)
-  local out = {}
-  if not ENABLE_PHASE_C_AUDIO_RERANK then return out end
-  if not file_path or tostring(file_path) == "" then return out end
-  if type(candidate_tags) ~= "table" or #candidate_tags == 0 then return out end
-  if not r.ExecProcess or not r.GetResourcePath then return out end
-
-  local script = get_python_phase_c_script_path()
-  if not script then return out end
-  local sf = io.open(script, "rb")
-  if not sf then return out end
-  sf:close()
-
-  local tags_path = (resource_paths and resource_paths.work_file(r, "phase_c", "_tags.tsv"))
-    or (r.GetResourcePath() .. sep .. "SampleLodeManager_phase_c_tags.tsv")
-  local out_path = (resource_paths and resource_paths.work_file(r, "phase_c", "_out.tsv"))
-    or (r.GetResourcePath() .. sep .. "SampleLodeManager_phase_c_out.tsv")
-  local f = io.open(tags_path, "wb")
-  if not f then return out end
-  for _, tg in ipairs(candidate_tags) do
-    local t = tostring(tg or ""):gsub("[\t\r\n]", " ")
-    if t ~= "" then f:write(t, "\n") end
-  end
-  f:close()
-
-  local cmd = string.format(
-    'python "%s" --audio "%s" --candidates "%s" --output "%s"',
-    script,
-    tostring(file_path):gsub('"', '\\"'),
-    tags_path,
-    out_path
-  )
-  local ok_exec, _ = pcall(function()
-    return r.ExecProcess(cmd, 12000)
-  end)
-  if not ok_exec then
-    cleanup_work_files({ tags_path, out_path })
-    return out
-  end
-
-  local rf = io.open(out_path, "rb")
-  if not rf then
-    cleanup_work_files({ tags_path, out_path })
-    return out
-  end
-  for line in rf:lines() do
-    local tag, score = line:match("^([^\t]+)\t([%d%.%-]+)$")
-    local sc = tonumber(score or "")
-    if tag and sc then
-      out[tostring(tag):lower()] = sc
-    end
-  end
-  rf:close()
-  cleanup_work_files({ tags_path, out_path })
-  return out
-end
 
 local function get_splice_tag_vocab(db)
   local vocab = {}
@@ -1423,495 +522,6 @@ local function get_splice_genre_vocab(db)
   return out
 end
 
-local function infer_filename_genre_priors(filename, splice_genre_vocab, alias_map)
-  local priors = {}
-  local fn = tostring(filename or ""):lower()
-  if fn == "" then return priors end
-  for tok in fn:gmatch("[a-z0-9#]+") do
-    local cands = { tok }
-    local alias = alias_map and alias_map[tok] or nil
-    if alias and alias ~= tok then
-      cands[#cands + 1] = alias
-    end
-    for _, c in ipairs(cands) do
-      if splice_genre_vocab[c] then
-        priors[c] = true
-      end
-    end
-  end
-  return priors
-end
-
-local function infer_genre_guess_tags(db, filename, bpm_value, splice_genre_vocab, alias_map)
-  if not db or type(splice_genre_vocab) ~= "table" or next(splice_genre_vocab) == nil then
-    return {}
-  end
-  local target_tokens = tokenize_words(filename)
-  if #target_tokens == 0 then return {} end
-  local bpm_num = tonumber(bpm_value)
-  local filename_priors = infer_filename_genre_priors(filename, splice_genre_vocab, alias_map)
-  local has_filename_opinion = next(filename_priors) ~= nil
-
-  local rows = {}
-  local sql
-  if bpm_num and bpm_num > 0 then
-    local lo = math.max(40, math.floor(bpm_num - 12))
-    local hi = math.min(240, math.ceil(bpm_num + 12))
-    sql = string.format([[
-      SELECT s.id AS id, s.filename AS filename, a.bpm AS bpm
-      FROM samples s
-      JOIN analysis a ON a.sample_id=s.id
-      WHERE s.source='splice'
-        AND COALESCE(a.class_primary, '')='loop'
-        AND a.bpm BETWEEN %d AND %d
-      LIMIT 800;
-    ]], lo, hi)
-  else
-    sql = [[
-      SELECT s.id AS id, s.filename AS filename, a.bpm AS bpm
-      FROM samples s
-      JOIN analysis a ON a.sample_id=s.id
-      WHERE s.source='splice'
-        AND COALESCE(a.class_primary, '')='loop'
-      LIMIT 800;
-    ]]
-  end
-
-  local scored = {}
-  for row in db:nrows(sql) do
-    local sid = tonumber(row.id or row[1] or 0) or 0
-    if sid > 0 then
-      local cfn = tostring(row.filename or row[2] or "")
-      local cbpm = tonumber(row.bpm or row[3] or 0)
-      local text_sim = jaccard_tokens(target_tokens, tokenize_words(cfn))
-      local bpm_sim = 0.3
-      if bpm_num and bpm_num > 0 and cbpm and cbpm > 0 then
-        local d = math.abs(bpm_num - cbpm)
-        bpm_sim = math.max(0, 1.0 - (d / 20.0))
-      end
-      local total = 0.7 * text_sim + 0.3 * bpm_sim
-      if total >= 0.12 then
-        scored[#scored + 1] = { id = sid, score = total }
-      end
-    end
-  end
-  table.sort(scored, function(a, b) return a.score > b.score end)
-  if #scored == 0 then return {} end
-  while #scored > 80 do table.remove(scored) end
-
-  local id_list = {}
-  local by_id_score = {}
-  for _, x in ipairs(scored) do
-    id_list[#id_list + 1] = tostring(x.id)
-    by_id_score[x.id] = x.score
-  end
-  local tag_scores = {}
-  local in_sql = table.concat(id_list, ",")
-  local sql_tags = string.format([[
-    SELECT sample_id, LOWER(tag) AS tag
-    FROM sample_tags
-    WHERE source='splice'
-      AND sample_id IN (%s);
-  ]], in_sql)
-  for row in db:nrows(sql_tags) do
-    local sid = tonumber(row.sample_id or row[1] or 0) or 0
-    local tag = tostring(row.tag or row[2] or "")
-    if sid > 0 and tag ~= "" and splice_genre_vocab[tag] then
-      tag_scores[tag] = (tag_scores[tag] or 0) + (by_id_score[sid] or 0)
-    end
-  end
-
-  -- If filename already hints a genre, slightly boost matching tags.
-  if has_filename_opinion then
-    for tag, _ in pairs(filename_priors) do
-      tag_scores[tag] = (tag_scores[tag] or 0) + 0.35
-    end
-  end
-
-  local ranked = {}
-  local best = 0
-  for tag, sc in pairs(tag_scores) do
-    ranked[#ranked + 1] = { tag = tag, score = sc }
-    if sc > best then best = sc end
-  end
-  table.sort(ranked, function(a, b) return a.score > b.score end)
-  if #ranked == 0 then return {} end
-
-  local second = ranked[2] and ranked[2].score or 0
-  local margin_ratio = (best > 0) and (second / best) or 1.0
-  local out = {}
-  local max_items = has_filename_opinion and 3 or 2
-  local min_conf_ratio = has_filename_opinion and 0.55 or 0.72
-  local min_best_abs = has_filename_opinion and 0.55 or 0.90
-  local max_margin_ratio = has_filename_opinion and 0.92 or 0.72
-
-  -- No filename signal: require clearly dominant nearest-neighbor evidence.
-  if (not has_filename_opinion) and (best < min_best_abs or margin_ratio > max_margin_ratio) then
-    return {}
-  end
-
-  for i, row in ipairs(ranked) do
-    if i > max_items then break end
-    local conf = math.min(0.95, row.score / math.max(1.0, best))
-    if conf >= min_conf_ratio then
-      if has_filename_opinion then
-        if row.score >= (best * 0.35) then
-          out[#out + 1] = { tag = row.tag, score = conf }
-        end
-      else
-        if row.score >= (best * 0.55) then
-          out[#out + 1] = { tag = row.tag, score = conf }
-        end
-      end
-    end
-  end
-
-  -- If filename had explicit genre tokens but NN was too weak, keep filename priors as low-risk fallback.
-  if has_filename_opinion and #out == 0 then
-    for tag, _ in pairs(filename_priors) do
-      out[#out + 1] = { tag = tag, score = 0.62 }
-      if #out >= 2 then break end
-    end
-  end
-  return out
-end
-
-local function candidate_forms(tag)
-  local out = {}
-  local seen = {}
-  local function push(v)
-    if not v or v == "" or seen[v] then return end
-    seen[v] = true
-    out[#out + 1] = v
-  end
-  local t = tostring(tag or ""):lower()
-  push(t)
-  push(t:gsub("%s+", ""))
-  push((t:gsub("%-", " ")))
-  push((t:gsub("_", " ")))
-  if t:sub(-1) == "s" then
-    push(t:sub(1, -2))
-  else
-    push(t .. "s")
-  end
-  return out
-end
-
-local function pick_vocab_tag(vocab, candidates)
-  local best_tag = nil
-  local best_score = -1
-  for _, cand in ipairs(candidates or {}) do
-    for _, key in ipairs(candidate_forms(cand)) do
-      local score = tonumber(vocab[key] or 0) or 0
-      if score > best_score then
-        best_score = score
-        best_tag = key
-      end
-    end
-  end
-  if best_score > 0 then return best_tag end
-  return nil
-end
-
-local function build_filename_guess_tags(filename, file_path, pack_name, splice_vocab, alias_map, phase_a_hints, phase_b2_hints)
-  local fn = tostring(filename or ""):lower()
-  local full = tostring(file_path or ""):lower()
-  local pack = tostring(pack_name or ""):lower()
-  local tags = {}
-  local seen = {}
-  local has_vocab = type(splice_vocab) == "table" and next(splice_vocab) ~= nil
-
-  local function add_tag(tag, score)
-    if not tag or tostring(tag) == "" then return end
-    local t = tostring(tag):lower()
-    if seen[t] then return end
-    seen[t] = true
-    tags[#tags + 1] = { tag = t, score = tonumber(score) or 0.5 }
-  end
-
-  local function add_from_candidates(candidates, fallback_tag, score, force_fallback)
-    if has_vocab then
-      local matched = pick_vocab_tag(splice_vocab, candidates)
-      if matched then
-        add_tag(matched, score)
-      elseif force_fallback then
-        add_tag(fallback_tag, score)
-      end
-    else
-      add_tag(fallback_tag, score)
-    end
-  end
-
-  local function has_word(word)
-    local padded = " " .. fn .. " "
-    return padded:find("[^%a]" .. word .. "[^%a]") ~= nil
-  end
-
-  local function remove_tags_by_set(drop_set)
-    local filtered = {}
-    for _, row in ipairs(tags) do
-      local t = tostring((row and row.tag) or ""):lower()
-      if t ~= "" and not drop_set[t] then
-        filtered[#filtered + 1] = row
-      end
-    end
-    tags = filtered
-  end
-
-  -- Detect candidates directly from filename tokens and map to Splice vocabulary.
-  -- This keeps "what to detect" driven by existing splice tags, not a fixed hand list.
-  if has_vocab then
-    local candidates = {}
-    local seen_cand = {}
-    local tokens = {}
-    local token_forms_set = {}
-    local skip_vocab_word = {
-      bpm = true,
-      loop = true,
-      loops = true,
-      one = true,
-      shot = true,
-      drum = true,
-      drums = true,
-    }
-
-    local function push_candidate(v)
-      v = tostring(v or ""):lower()
-      if v == "" or seen_cand[v] then return end
-      seen_cand[v] = true
-      candidates[#candidates + 1] = v
-    end
-
-    for token in fn:gmatch("[a-z0-9#]+") do
-      tokens[#tokens + 1] = token
-      push_candidate(token)
-      token_forms_set[token] = true
-      if token:sub(-1) == "s" then
-        token_forms_set[token:sub(1, -2)] = true
-      else
-        token_forms_set[token .. "s"] = true
-      end
-    end
-    for i = 1, (#tokens - 1) do
-      push_candidate(tokens[i] .. " " .. tokens[i + 1])
-      push_candidate(tokens[i] .. tokens[i + 1])
-    end
-
-    local function resolve_alias(c)
-      local v = tostring(c or ""):lower()
-      if v == "" then return v end
-      return (alias_map and alias_map[v]) or v
-    end
-
-    for _, cand in ipairs(candidates) do
-      local c0 = resolve_alias(cand)
-      local matched = pick_vocab_tag(splice_vocab, { c0, cand })
-      if matched then
-        add_tag(matched, 0.72)
-      end
-    end
-
-    -- Generic vocabulary-driven matching:
-    -- add any splice tag whose component words are present in filename tokens.
-    for vocab_tag, _cnt in pairs(splice_vocab) do
-      local words = {}
-      for w in tostring(vocab_tag):gmatch("[a-z0-9#]+") do
-        words[#words + 1] = w
-      end
-      if #words >= 1 and #words <= 3 then
-        local ok_all = true
-        for _, w in ipairs(words) do
-          if skip_vocab_word[w] or #w < 3 then
-            ok_all = false
-            break
-          end
-          local resolved_w = (alias_map and alias_map[w]) or w
-          if not token_forms_set[w] and not token_forms_set[resolved_w] then
-            ok_all = false
-            break
-          end
-        end
-        if ok_all then
-          add_tag(vocab_tag, (#words == 1) and 0.74 or 0.66)
-        end
-      end
-    end
-  end
-
-  if type(phase_a_hints) == "table" then
-    for _, hint in ipairs(phase_a_hints) do
-      local h = tostring(hint or ""):lower()
-      if h ~= "" then
-        -- Phase-A hints should map to known vocabulary, not create raw/free-form tags.
-        add_from_candidates({ h }, h, 0.78, false)
-      end
-    end
-  end
-  if type(phase_b2_hints) == "table" then
-    for _, hint in ipairs(phase_b2_hints) do
-      local h = tostring(hint or ""):lower()
-      if h ~= "" then
-        -- Keep audio-only bass inference conservative: start as weak candidate by default.
-        local hint_score = (h == "bass") and 0.68 or 0.76
-        add_from_candidates({ h }, h, hint_score, false)
-      end
-    end
-  end
-
-  local has_kick = has_word("kick")
-  local has_snare = has_word("snare")
-  local has_clap = has_word("clap")
-  local has_hihat = fn:find("hihat", 1, true) or fn:find("hi%-hat") or fn:find("hi_hat") or fn:find(" hi hat ", 1, true)
-  local has_open_hat = fn:find("open hat", 1, true) or fn:find("open_hat", 1, true) or fn:find("open%-hat")
-  local has_rim = has_word("rim")
-  local has_perc = has_word("perc") or has_word("percussion")
-  local has_shaker = has_word("shaker") or has_word("shakers")
-  local has_cymbal = has_word("cymbal") or has_word("cymbals") or has_word("crash") or has_word("ride") or has_word("splash")
-  local has_fx_word = has_word("reverse") or has_word("reversed") or has_word("riser") or has_word("uplifter")
-    or has_word("downlifter") or has_word("sweep") or has_word("swell") or has_word("whoosh")
-    or has_word("impact") or has_word("transition") or has_word("fx")
-  local has_explicit_bass_word = has_word("bass") or has_word("808") or has_word("reese")
-    or has_word("neuro") or has_word("growl")
-  -- Project policy: these core drum tags are always pluralized.
-  if has_kick then add_tag("kicks", 0.95) end
-  if has_snare then add_tag("snares", 0.95) end
-  if has_clap then add_tag("claps", 0.95) end
-  if has_hihat then
-    -- Policy: unify hi-hat family to "hats" when possible.
-    add_from_candidates({ "hats", "hat", "hihat", "hi hat" }, "hats", 0.9, true)
-  end
-  if has_open_hat then
-    -- Keep "hats" unified for open-hat naming too.
-    add_from_candidates({ "hats", "hat", "open hat", "openhat", "hihat" }, "hats", 0.9, true)
-  end
-  if has_rim then add_tag("rims", 0.85) end
-  if has_perc then
-    add_from_candidates({ "percussion", "perc" }, "percussion", 0.85, true)
-  end
-  if has_shaker then
-    add_from_candidates({ "shakers", "shaker" }, "shakers", 0.9, true)
-  end
-  if has_cymbal then
-    add_from_candidates({ "cymbals", "cymbal", "crash", "ride", "splash" }, "cymbals", 0.9, true)
-  end
-  if has_word("808") then
-    add_from_candidates({ "808", "bass" }, "808", 0.9, true)
-    add_from_candidates({ "bass" }, "bass", 0.8, true)
-  end
-  if has_word("reese") then
-    add_from_candidates({ "reese", "bass" }, "reese", 0.8, true)
-    -- Policy: reese implies bass layer in this project.
-    add_from_candidates({ "bass" }, "bass", 0.65, true)
-  end
-  if has_word("neuro") then
-    add_from_candidates({ "neuro", "bass" }, "neuro", 0.8, true)
-    -- Policy: neuro bass naming should still carry the "bass" family tag.
-    add_from_candidates({ "bass" }, "bass", 0.65, true)
-  end
-  if has_word("growl") then
-    add_from_candidates({ "growl", "bass" }, "growl", 0.8, true)
-    -- Policy: growl bass naming should still carry the "bass" family tag.
-    add_from_candidates({ "bass" }, "bass", 0.65, true)
-  end
-  if has_word("ambient") or has_word("ambience") or has_word("atmosphere") or has_word("atmospheric") then
-    add_from_candidates({ "ambient", "ambience", "atmosphere", "atmospheric" }, "ambient", 0.9, true)
-  end
-  if has_word("texture") or has_word("textures") or has_word("textural") then
-    add_from_candidates({ "texture", "textures", "textural" }, "texture", 0.9, true)
-  end
-
-  -- Folder/context hints.
-  local ctx = full .. " " .. pack
-  local is_loop_context = (
-    ctx:find("drums loops", 1, true)
-    or ctx:find("drum loops", 1, true)
-    or ctx:find("drum loop", 1, true)
-    or fn:find(" loop ", 1, true)
-    or fn:find("drum loop", 1, true)
-  ) ~= nil
-  local is_one_shot_context = (
-    ctx:find("one shots", 1, true)
-    or ctx:find("one shot", 1, true)
-    or ctx:find("one%-shot")
-    or fn:find("oneshot", 1, true)
-    or fn:find("one shot", 1, true)
-    or fn:find("one%-shot")
-  ) ~= nil
-  local is_drum_like = has_kick or has_snare or has_clap or has_hihat or has_open_hat or has_rim or has_perc or has_shaker or has_cymbal
-  local has_explicit_mood_words = has_word("ambient") or has_word("ambience")
-    or has_word("atmosphere") or has_word("atmospheric")
-    or has_word("texture") or has_word("textures") or has_word("textural")
-
-  -- Policy:
-  -- - no "oneshot" tag from folder context
-  -- - use "drums" (not "drum loop")
-  -- - add drums for drum-like one shots
-  if is_loop_context then
-    add_from_candidates({ "drums", "drum" }, "drums", 0.7, true)
-  end
-  if is_one_shot_context and is_drum_like then
-    add_from_candidates({ "drums", "drum" }, "drums", 0.7, true)
-  end
-
-  -- Tops: drum/perc loop that is not kick-focused.
-  if is_loop_context and (has_snare or has_clap or has_hihat or has_open_hat or has_rim or has_perc or has_shaker or has_cymbal) and not has_kick then
-    add_from_candidates({ "tops", "top loop", "drum tops" }, "tops", 0.65, true)
-  end
-
-  -- Policy: if hats is present, drop narrower hi-hat spellings for consistency.
-  if seen["hats"] then
-    local filtered = {}
-    local blocked = {
-      ["hat"] = true,
-      ["hihat"] = true,
-      ["hi hat"] = true,
-      ["open hat"] = true,
-      ["openhat"] = true,
-    }
-    for _, row in ipairs(tags) do
-      if not blocked[tostring(row.tag or ""):lower()] then
-        filtered[#filtered + 1] = row
-      end
-    end
-    tags = filtered
-  end
-
-  -- Suppress mood tags on clear drum-instrument loops unless explicitly named.
-  -- This keeps "snap/snare/kick..." loops from receiving accidental "texture/ambient"
-  -- due to nearest-neighbor or weak audio hints.
-  local instrument_loop_markers = {
-    kicks = true, snares = true, claps = true, rims = true,
-    hats = true, shakers = true, cymbals = true, percussion = true,
-    snaps = true, cowbells = true, tops = true,
-  }
-  local has_instrument_marker = false
-  for _, row in ipairs(tags) do
-    local t = tostring((row and row.tag) or ""):lower()
-    if instrument_loop_markers[t] then
-      has_instrument_marker = true
-      break
-    end
-  end
-  if is_loop_context and has_instrument_marker and not has_explicit_mood_words then
-    remove_tags_by_set({
-      ambient = true,
-      texture = true,
-      atmos = true,
-      atmosphere = true,
-      atmospheric = true,
-    })
-  end
-
-  -- Safety guard: cymbal/fx materials should not receive "bass" unless filename explicitly says bass-family words.
-  if (has_cymbal or has_fx_word) and not has_explicit_bass_word then
-    remove_tags_by_set({
-      bass = true,
-    })
-  end
-
-  return tags
-end
-
 local function replace_filename_guess_tags(db, sample_id, tag_rows)
   if not db or not sample_id then return end
   exec_safe(db, string.format(
@@ -1972,23 +582,6 @@ local function replace_genre_guess_tags(db, sample_id, tag_rows)
   end
 end
 
-local function apply_phase_c_rerank(tag_rows, audio_scores)
-  if type(tag_rows) ~= "table" or #tag_rows == 0 then return tag_rows end
-  if type(audio_scores) ~= "table" or next(audio_scores) == nil then return tag_rows end
-  local out = {}
-  for _, row in ipairs(tag_rows) do
-    local tag = tostring((row and row.tag) or ""):lower()
-    local base = tonumber(row and row.score or 0) or 0
-    if tag ~= "" then
-      local a = tonumber(audio_scores[tag] or 0) or 0
-      local bonus = 0.20 * math.max(0.0, a - 0.5)
-      local new_score = math.max(0.0, math.min(1.0, base + bonus))
-      out[#out + 1] = { tag = tag, score = new_score }
-    end
-  end
-  return out
-end
-
 local function upsert_sample_and_analysis(db, pack_id, source, source_sample_id, file_path, filename, ext, pack_name, splice_vocab, alias_map, phase_a_hints, phase_b2_hints, phase_d_features, phase_e_embed, splice_genre_vocab)
   local now = os.time()
   local qpath = sql_quote(file_path)
@@ -2010,16 +603,16 @@ local function upsert_sample_and_analysis(db, pack_id, source, source_sample_id,
 
   local sample_id = get_singleton_int(db, string.format("SELECT id FROM samples WHERE path=%s;", qpath))
 
-  local guess = guess_type_and_bpm_and_key(filename)
+  local guess = tag_inference.guess_type_and_bpm_and_key(filename)
   local feat = (type(phase_d_features) == "table") and phase_d_features or nil
   local emb = (type(phase_e_embed) == "table") and phase_e_embed or nil
-  local audio_complete = type(feat) == "table" and phase_d_row_complete(feat)
+  local audio_complete = type(feat) == "table" and python_worker.phase_d_row_complete(feat)
   local analysis_version = "v0.1_filename_guess"
   if type(feat) == "table" then
     if audio_complete then
       analysis_version = "v0.2_audio_features"
     else
-      for _, k in ipairs(PHASE_D_FEATURE_KEYS) do
+      for _, k in ipairs(python_worker.get_phase_d_feature_keys()) do
         if tonumber(feat[k]) ~= nil then
           analysis_version = "v0.2_audio_partial"
           break
@@ -2081,7 +674,7 @@ local function upsert_sample_and_analysis(db, pack_id, source, source_sample_id,
   ))
 
   if tostring(source) ~= "splice" then
-    local guess_tags = build_filename_guess_tags(filename, file_path, pack_name, splice_vocab, alias_map, phase_a_hints, phase_b2_hints)
+    local guess_tags = tag_inference.build_filename_guess_tags(filename, file_path, pack_name, splice_vocab, alias_map, phase_a_hints, phase_b2_hints)
     local candidate_for_audio = {}
     do
       local seen = {}
@@ -2093,7 +686,7 @@ local function upsert_sample_and_analysis(db, pack_id, source, source_sample_id,
         end
       end
       if guess.class_primary == "loop" then
-        local g0 = infer_genre_guess_tags(db, filename, guess.bpm, splice_genre_vocab, alias_map)
+        local g0 = tag_inference.infer_genre_guess_tags(db, filename, guess.bpm, splice_genre_vocab, alias_map)
         for _, gr in ipairs(g0 or {}) do
           local tg = tostring((gr and gr.tag) or ""):lower()
           if tg ~= "" and not seen[tg] then
@@ -2103,8 +696,8 @@ local function upsert_sample_and_analysis(db, pack_id, source, source_sample_id,
         end
       end
     end
-    local phase_c_scores = run_python_phase_c_single(file_path, candidate_for_audio)
-    guess_tags = apply_phase_c_rerank(guess_tags, phase_c_scores)
+    local phase_c_scores = python_worker.run_python_phase_c_single(file_path, candidate_for_audio)
+    guess_tags = tag_inference.apply_phase_c_rerank(guess_tags, phase_c_scores)
     local strong = {}
     local weak = {}
     for _, row in ipairs(guess_tags or {}) do
@@ -2118,8 +711,8 @@ local function upsert_sample_and_analysis(db, pack_id, source, source_sample_id,
     replace_filename_guess_tags(db, sample_id, strong)
     replace_tag_candidate_tags(db, sample_id, weak)
     if guess.class_primary == "loop" then
-      local genre_tags = infer_genre_guess_tags(db, filename, guess.bpm, splice_genre_vocab, alias_map)
-      genre_tags = apply_phase_c_rerank(genre_tags, phase_c_scores)
+      local genre_tags = tag_inference.infer_genre_guess_tags(db, filename, guess.bpm, splice_genre_vocab, alias_map)
+      genre_tags = tag_inference.apply_phase_c_rerank(genre_tags, phase_c_scores)
       replace_genre_guess_tags(db, sample_id, genre_tags)
     else
       replace_genre_guess_tags(db, sample_id, {})
@@ -2129,7 +722,7 @@ local function upsert_sample_and_analysis(db, pack_id, source, source_sample_id,
   return sample_id
 end
 
--- Writes phase_d + optional embed; NULLs failed/partial fields (no COALESCE — clears bad values).
+-- Writes phase_d + optional embed; NULLs failed/partial fields (no COALESCE 窶・clears bad values).
 local function apply_phase_d_to_analysis(db, sample_id, feat, emb)
   local sid = tonumber(sample_id)
   if not sid or sid < 1 or not db then return end
@@ -2151,13 +744,13 @@ local function apply_phase_d_to_analysis(db, sample_id, feat, emb)
     return
   end
   local any_num = false
-  for _, k in ipairs(PHASE_D_FEATURE_KEYS) do
+  for _, k in ipairs(python_worker.get_phase_d_feature_keys()) do
     if tonumber(feat[k]) ~= nil then
       any_num = true
       break
     end
   end
-  local complete = phase_d_row_complete(feat)
+  local complete = python_worker.phase_d_row_complete(feat)
   local ver = complete and "v0.2_audio_features" or (any_num and "v0.2_audio_partial" or "v0.1_filename_guess")
   local emb_ok = complete and emb and tonumber(emb.embed_x) and tonumber(emb.embed_y)
   exec_safe(db, string.format([[
@@ -2253,7 +846,7 @@ local function build_rescan_job(store, root_id, opts)
         ext = tostring((row.path or row[2] or ""):match("%.([^%.]+)$") or ""):lower(),
       }
     end
-    local existing_phase_d = get_existing_phase_d_for_entries(db, entries)
+    local existing_phase_d = python_worker.get_existing_phase_d_for_entries(db, entries)
     return {
       db = db,
       source_type = "splice",
@@ -2390,7 +983,7 @@ function M.step_rescan_job(job, max_files)
           if src then
             local rel = gi - from + 1
             local existing = job.splice_existing_phase_d_by_index and job.splice_existing_phase_d_by_index[gi] or nil
-            local should_skip = (job.splice_force_phase_d_all ~= true) and phase_d_row_complete(existing)
+            local should_skip = (job.splice_force_phase_d_all ~= true) and python_worker.phase_d_row_complete(existing)
             chunk_entries[rel] = {
               full_path = src.full_path,
               filename = src.filename,
@@ -2404,7 +997,7 @@ function M.step_rescan_job(job, max_files)
           end
         end
         job.phase = "scan_splice_analyze"
-        local phase_d_new_chunk = run_python_phase_d_batch(chunk_entries, "splice")
+        local phase_d_new_chunk = python_worker.run_python_phase_d_batch(chunk_entries, "splice")
         local phase_d_chunk = {}
         for rel, feat in pairs(chunk_existing_by_rel) do
           phase_d_chunk[rel] = feat
@@ -2412,9 +1005,9 @@ function M.step_rescan_job(job, max_files)
         for rel, feat in pairs(phase_d_new_chunk or {}) do
           phase_d_chunk[rel] = feat
         end
-        local phase_e_chunk = run_python_phase_e_batch(phase_d_chunk)
-        job.phase_d_count = (job.phase_d_count or 0) + table_count_keys(phase_d_new_chunk)
-        job.phase_e_count = (job.phase_e_count or 0) + table_count_keys(phase_e_chunk)
+        local phase_e_chunk = python_worker.run_python_phase_e_batch(phase_d_chunk)
+        job.phase_d_count = (job.phase_d_count or 0) + python_worker.table_count_keys(phase_d_new_chunk)
+        job.phase_e_count = (job.phase_e_count or 0) + python_worker.table_count_keys(phase_e_chunk)
         job.chunk_from = from
         job.chunk_to = to_idx
         job.chunk_phase_d_by_rel = phase_d_chunk
@@ -2471,9 +1064,9 @@ function M.step_rescan_job(job, max_files)
           ext = ext2,
         }
       end)
-      local unknown_tokens = collect_unknown_tokens_from_entries(entries, job.splice_vocab, job.alias_map)
-      local auto_alias_rows = run_python_auto_alias_batch(unknown_tokens, job.splice_vocab)
-      local changed_alias = apply_auto_alias_rows(job.db, auto_alias_rows)
+      local unknown_tokens = tag_inference.collect_unknown_tokens_from_entries(entries, job.splice_vocab, job.alias_map)
+      local auto_alias_rows = python_worker.run_python_auto_alias_batch(unknown_tokens, job.splice_vocab)
+      local changed_alias = python_worker.apply_auto_alias_rows(job.db, auto_alias_rows)
       if changed_alias > 0 then
         job.alias_map = get_tag_alias_map(job.db)
       end
@@ -2529,12 +1122,12 @@ function M.step_rescan_job(job, max_files)
             }
           end
         end
-        local phase_a_chunk = run_python_phase_a_batch(chunk_entries, job.current_pack.name)
-        local phase_b2_chunk = run_python_phase_b2_batch(chunk_entries, job.current_pack.name)
-        local phase_d_chunk = run_python_phase_d_batch(chunk_entries, job.current_pack.name)
-        local phase_e_chunk = run_python_phase_e_batch(phase_d_chunk)
-        job.phase_d_count = (job.phase_d_count or 0) + table_count_keys(phase_d_chunk)
-        job.phase_e_count = (job.phase_e_count or 0) + table_count_keys(phase_e_chunk)
+        local phase_a_chunk = python_worker.run_python_phase_a_batch(chunk_entries, job.current_pack.name)
+        local phase_b2_chunk = python_worker.run_python_phase_b2_batch(chunk_entries, job.current_pack.name)
+        local phase_d_chunk = python_worker.run_python_phase_d_batch(chunk_entries, job.current_pack.name)
+        local phase_e_chunk = python_worker.run_python_phase_e_batch(phase_d_chunk)
+        job.phase_d_count = (job.phase_d_count or 0) + python_worker.table_count_keys(phase_d_chunk)
+        job.phase_e_count = (job.phase_e_count or 0) + python_worker.table_count_keys(phase_e_chunk)
         job.chunk_from = from
         job.chunk_to = to_idx
         job.chunk_phase_a_by_rel = phase_a_chunk
@@ -3341,7 +1934,7 @@ function M.reset_tags_to_default_for_samples(store, sample_ids)
         local class_primary = tostring(row.class_primary or "")
         local bpm_value = tonumber(row.bpm)
 
-        local guess_tags = build_filename_guess_tags(filename, file_path, pack_name, splice_vocab, alias_map, nil, nil)
+        local guess_tags = tag_inference.build_filename_guess_tags(filename, file_path, pack_name, splice_vocab, alias_map, nil, nil)
         local strong = {}
         local weak = {}
         for _, tg in ipairs(guess_tags or {}) do
@@ -3355,7 +1948,7 @@ function M.reset_tags_to_default_for_samples(store, sample_ids)
         replace_filename_guess_tags(db, sid, strong)
         replace_tag_candidate_tags(db, sid, weak)
         if class_primary == "loop" then
-          local genre_tags = infer_genre_guess_tags(db, filename, bpm_value, splice_genre_vocab, alias_map)
+          local genre_tags = tag_inference.infer_genre_guess_tags(db, filename, bpm_value, splice_genre_vocab, alias_map)
           replace_genre_guess_tags(db, sid, genre_tags)
         else
           replace_genre_guess_tags(db, sid, {})
@@ -3699,7 +2292,7 @@ function M.import_splice_db(store, splice_db_path)
       if sample_id then
         local class_primary = (sample_type == "loop") and "loop" or "oneshot"
         local bpm = (bpm_raw and bpm_raw > 0) and bpm_raw or nil
-        local key_estimate = normalize_key_estimate(audio_key, chord_type)
+        local key_estimate = tag_inference.normalize_key_estimate(audio_key, chord_type)
 
         exec_safe(main_db, string.format([[
           INSERT OR REPLACE INTO analysis(
@@ -3730,7 +2323,7 @@ function M.import_splice_db(store, splice_db_path)
 
         -- Refresh splice tags for this sample
         exec_safe(main_db, string.format("DELETE FROM sample_tags WHERE sample_id=%d AND source='splice';", sample_id))
-        local tags = split_csv_tags(tags_text)
+        local tags = tag_inference.split_csv_tags(tags_text)
         for _, tag in ipairs(tags) do
           exec_safe(main_db, string.format([[
             INSERT OR IGNORE INTO sample_tags(sample_id, tag, score, source, created_at)
@@ -3786,17 +2379,13 @@ function M.set_pack_favorite(store, pack_id, want_favorite)
 end
 
 function M.set_phase_e_preset(preset)
-  local p = tostring(preset or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
-  if p == "" then return false, "empty preset" end
-  if not PHASE_E_PRESET_ALLOWED[p] then
-    return false, "invalid preset"
-  end
-  PHASE_E_PRESET = p
-  return true
+  if not python_worker then return false, "python_worker unavailable" end
+  return python_worker.set_phase_e_preset(preset)
 end
 
 function M.get_phase_e_preset()
-  return tostring(PHASE_E_PRESET or "core5")
+  if not python_worker then return "core5" end
+  return python_worker.get_phase_e_preset()
 end
 
 local function collect_phase_d_rows_for_embedding(db, only_oneshot)
@@ -3848,11 +2437,11 @@ function M.build_galaxy_embedding_profiles(store, opts)
   local now = os.time()
   local phase_d_by_index, total = collect_phase_d_rows_for_embedding(db, only_oneshot)
   if total == 0 then return false, "no analysis rows" end
-  local base_preset = tostring(PHASE_E_PRESET or "core5")
+  local base_preset = tostring(python_worker.get_phase_e_preset() or "core5")
   local profile_keys = {}
   local profile_stats = {}
   exec_safe(db, "BEGIN;")
-  for _, spec in ipairs(GALAXY_EMBED_PROFILE_VARIANTS) do
+  for _, spec in ipairs(python_worker.get_galaxy_embed_profile_variants()) do
     local profile_key = base_preset .. ":" .. tostring(spec.key)
     profile_keys[#profile_keys + 1] = profile_key
     local pe_opts = {
@@ -3864,7 +2453,7 @@ function M.build_galaxy_embedding_profiles(store, opts)
       near_neutral_min_count = opts.near_neutral_min_count,
       max_excluded_ids = opts.max_excluded_ids,
     }
-    local emb = run_python_phase_e_batch(phase_d_by_index, pe_opts)
+    local emb = python_worker.run_python_phase_e_batch(phase_d_by_index, pe_opts)
     local saved = 0
     if type(emb) == "table" then
       for sid, e in pairs(emb) do
@@ -3904,7 +2493,7 @@ function M.apply_galaxy_embedding_profile(store, profile_suffix, opts)
   local only_oneshot = opts.only_oneshot ~= false
   local suffix = tostring(profile_suffix or ""):gsub("^%s+", ""):gsub("%s+$", "")
   if suffix == "" then return false, "empty profile" end
-  local profile_key = tostring(PHASE_E_PRESET or "core5") .. ":" .. suffix
+  local profile_key = tostring(python_worker.get_phase_e_preset() or "core5") .. ":" .. suffix
   local cnt = 0
   for row in db:nrows(string.format("SELECT COUNT(*) AS n FROM analysis_embed_profiles WHERE profile_key=%s;", sql_quote(profile_key))) do
     cnt = tonumber(row.n or row[1] or 0) or 0
@@ -3935,7 +2524,7 @@ function M.apply_galaxy_embedding_profile(store, profile_suffix, opts)
        %s
   ]], sql_quote(profile_key), sql_quote(profile_key), sql_quote(profile_key), where_apply))
   exec_safe(db, "COMMIT;")
-  return true, { profile_key = profile_key, applied = cnt, preset = tostring(PHASE_E_PRESET or "core5") }
+  return true, { profile_key = profile_key, applied = cnt, preset = tostring(python_worker.get_phase_e_preset() or "core5") }
 end
 
 function M.rebuild_galaxy_embedding_with_profiles(store, opts)
@@ -3964,7 +2553,7 @@ function M.get_galaxy_embed_profile_points(store, profile_suffix, sample_ids)
     end
   end
   if #ids == 0 then return {} end
-  local profile_key = tostring(PHASE_E_PRESET or "core5") .. ":" .. suffix
+  local profile_key = tostring(python_worker.get_phase_e_preset() or "core5") .. ":" .. suffix
   local ids_sql = table.concat(ids, ",")
   local out = {}
   local sql = string.format([[
@@ -4030,7 +2619,7 @@ function M.rebuild_galaxy_embedding(store, opts)
     end
   end
   if total == 0 then return false, "no analysis rows" end
-  local emb = run_python_phase_e_batch(phase_d_by_index, pe_opts)
+  local emb = python_worker.run_python_phase_e_batch(phase_d_by_index, pe_opts)
   if type(emb) ~= "table" then return false, "embedding failed" end
   local embedded = 0
   exec_safe(db, "BEGIN;")
@@ -4101,21 +2690,21 @@ function M.rebuild_galaxy_embedding(store, opts)
   return true, {
     total = total,
     embedded = embedded,
-    preset = PHASE_E_PRESET,
-    mode = PHASE_E_LAST_INFO.mode or "unknown",
-    dims = PHASE_E_LAST_INFO.dims or 0,
-    min_valid_features = PHASE_E_LAST_INFO.min_valid_used or PHASE_E_MIN_VALID_FEATURES,
-    dropped_low_valid = PHASE_E_LAST_INFO.dropped_low_valid or 0,
-    dropped_near_neutral = PHASE_E_LAST_INFO.dropped_near_neutral or 0,
-    excluded_low_valid_sample_ids = PHASE_E_LAST_INFO.excluded_low_valid_ids or "",
-    excluded_near_neutral_sample_ids = PHASE_E_LAST_INFO.excluded_near_neutral_ids or "",
+    preset = python_worker.get_phase_e_preset(),
+    mode = python_worker.get_phase_e_last_info().mode or "unknown",
+    dims = python_worker.get_phase_e_last_info().dims or 0,
+    min_valid_features = python_worker.get_phase_e_last_info().min_valid_used or python_worker.get_phase_e_min_valid_features(),
+    dropped_low_valid = python_worker.get_phase_e_last_info().dropped_low_valid or 0,
+    dropped_near_neutral = python_worker.get_phase_e_last_info().dropped_near_neutral or 0,
+    excluded_low_valid_sample_ids = python_worker.get_phase_e_last_info().excluded_low_valid_ids or "",
+    excluded_near_neutral_sample_ids = python_worker.get_phase_e_last_info().excluded_near_neutral_ids or "",
     island_top = table.concat(island_top, " | "),
     island_feat_summary = feat_summary,
   }
 end
 
 -- Re-run phase_e only; update embed for rows that had NULL embed (does not clear existing coords).
--- Uses same phase_e row rules as rebuild (see PHASE_E_MIN_VALID_FEATURES / exclude_near_neutral).
+-- Uses same phase_e row rules as rebuild (see python_worker.get_phase_e_min_valid_features() / exclude_near_neutral).
 function M.fill_missing_galaxy_embedding(store, opts)
   local db = store and store.db
   if not db then return false, "no db" end
@@ -4178,17 +2767,17 @@ function M.fill_missing_galaxy_embedding(store, opts)
       filled = 0,
       relaxed = relax,
       still_missing_embed = 0,
-      preset = PHASE_E_PRESET,
+      preset = python_worker.get_phase_e_preset(),
       mode = "skipped",
       dims = 0,
-      min_valid_features = PHASE_E_MIN_VALID_FEATURES,
+      min_valid_features = python_worker.get_phase_e_min_valid_features(),
       dropped_low_valid = 0,
       dropped_near_neutral = 0,
       excluded_low_valid_sample_ids = "",
       excluded_near_neutral_sample_ids = "",
     }
   end
-  local emb = run_python_phase_e_batch(phase_d_by_index)
+  local emb = python_worker.run_python_phase_e_batch(phase_d_by_index)
   if type(emb) ~= "table" then return false, "embedding failed" end
   local filled = 0
   exec_safe(db, "BEGIN;")
@@ -4212,14 +2801,14 @@ function M.fill_missing_galaxy_embedding(store, opts)
     filled = filled,
     relaxed = relax,
     still_missing_embed = math.max(0, missing_n - filled),
-    preset = PHASE_E_PRESET,
-    mode = PHASE_E_LAST_INFO.mode or "unknown",
-    dims = PHASE_E_LAST_INFO.dims or 0,
-    min_valid_features = PHASE_E_LAST_INFO.min_valid_used or PHASE_E_MIN_VALID_FEATURES,
-    dropped_low_valid = PHASE_E_LAST_INFO.dropped_low_valid or 0,
-    dropped_near_neutral = PHASE_E_LAST_INFO.dropped_near_neutral or 0,
-    excluded_low_valid_sample_ids = PHASE_E_LAST_INFO.excluded_low_valid_ids or "",
-    excluded_near_neutral_sample_ids = PHASE_E_LAST_INFO.excluded_near_neutral_ids or "",
+    preset = python_worker.get_phase_e_preset(),
+    mode = python_worker.get_phase_e_last_info().mode or "unknown",
+    dims = python_worker.get_phase_e_last_info().dims or 0,
+    min_valid_features = python_worker.get_phase_e_last_info().min_valid_used or python_worker.get_phase_e_min_valid_features(),
+    dropped_low_valid = python_worker.get_phase_e_last_info().dropped_low_valid or 0,
+    dropped_near_neutral = python_worker.get_phase_e_last_info().dropped_near_neutral or 0,
+    excluded_low_valid_sample_ids = python_worker.get_phase_e_last_info().excluded_low_valid_ids or "",
+    excluded_near_neutral_sample_ids = python_worker.get_phase_e_last_info().excluded_near_neutral_ids or "",
   }
 end
 
@@ -4267,10 +2856,10 @@ function M.reanalyze_missing_audio_features(store, opts)
     return true, { target = 0, analyzed = 0, embedded = 0, updated = 0, dropped_low_valid = 0, dropped_near_neutral = 0 }
   end
 
-  local phase_d_by_index = run_python_phase_d_batch(entries, "repair_missing")
-  local phase_e_by_index = run_python_phase_e_batch(phase_d_by_index)
-  local analyzed = table_count_keys(phase_d_by_index)
-  local embedded = table_count_keys(phase_e_by_index)
+  local phase_d_by_index = python_worker.run_python_phase_d_batch(entries, "repair_missing")
+  local phase_e_by_index = python_worker.run_python_phase_e_batch(phase_d_by_index)
+  local analyzed = python_worker.table_count_keys(phase_d_by_index)
+  local embedded = python_worker.table_count_keys(phase_e_by_index)
   local updated = 0
   for i, e in ipairs(entries) do
     local sid = tonumber(e.sample_id)
@@ -4285,8 +2874,8 @@ function M.reanalyze_missing_audio_features(store, opts)
     analyzed = analyzed,
     embedded = embedded,
     updated = updated,
-    dropped_low_valid = PHASE_E_LAST_INFO.dropped_low_valid or 0,
-    dropped_near_neutral = PHASE_E_LAST_INFO.dropped_near_neutral or 0,
+    dropped_low_valid = python_worker.get_phase_e_last_info().dropped_low_valid or 0,
+    dropped_near_neutral = python_worker.get_phase_e_last_info().dropped_near_neutral or 0,
   }
 end
 

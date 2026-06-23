@@ -4,6 +4,41 @@ local M = {}
 
 local sep = package.config:sub(1, 1)
 
+--- Normalize user-entered or pasted filesystem paths (quotes, trailing slashes, drive roots).
+--- @param raw string|nil
+--- @param opts table|nil { empty_as_nil = bool } — when true, empty result is nil (DB); else "" (UI input)
+function M.sanitize_root_path(raw, opts)
+  opts = type(opts) == "table" and opts or {}
+  if raw == nil then
+    if opts.empty_as_nil then return nil end
+    return ""
+  end
+  local s = tostring(raw)
+  s = s:gsub("\r", ""):gsub("\n", "")
+  s = s:gsub("^%s+", ""):gsub("%s+$", "")
+  if #s >= 2 then
+    local first = s:sub(1, 1)
+    local last = s:sub(-1)
+    if (first == '"' and last == '"') or (first == "'" and last == "'") then
+      s = s:sub(2, -2)
+      s = s:gsub("^%s+", ""):gsub("%s+$", "")
+    end
+  end
+  if s ~= "" then
+    local drive = s:match("^([A-Za-z]:)[/\\]?$")
+    if drive then
+      s = drive .. sep
+    else
+      s = s:gsub("[/\\]+$", "")
+    end
+  end
+  if s == "" then
+    if opts.empty_as_nil then return nil end
+    return ""
+  end
+  return s
+end
+
 function M.ensure_dir(dir_path)
   if not dir_path or dir_path == "" then return false end
   if sep == "\\" then

@@ -49,12 +49,17 @@
         <source file="src/lib/core/ui_samples_galaxy.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_samples_galaxy.lua</source>
         <source file="src/lib/core/ui_samples_list.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_samples_list.lua</source>
         <source file="src/lib/core/ui_search.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_search.lua</source>
+        <source file="src/lib/core/ui_preview.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_preview.lua</source>
+        <source file="src/lib/core/ui_dnd.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_dnd.lua</source>
+        <source file="src/lib/core/ui_edit_popup.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_edit_popup.lua</source>
         <source file="src/lib/core/resource_paths.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/resource_paths.lua</source>
         <source file="src/lib/core/ui_imgui_utils.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_imgui_utils.lua</source>
         <source file="src/lib/core/ext_state.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ext_state.lua</source>
         <source file="src/lib/core/key_bpm_utils.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/key_bpm_utils.lua</source>
         <source file="src/lib/core/ui_theme.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/core/ui_theme.lua</source>
         <source file="src/lib/db/db_manager.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/db/db_manager.lua</source>
+        <source file="src/lib/db/tag_inference.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/db/tag_inference.lua</source>
+        <source file="src/lib/db/python_worker.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/db/python_worker.lua</source>
         <source file="src/lib/db/sqlite_store.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/db/sqlite_store.lua</source>
         <source file="src/lib/waveform.lua">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/lib/waveform.lua</source>
         <source file="src/python/auto_alias_suggest.py">https://github.com/Oshibacomyaku/samplelodemanager/raw/622944bf48e626f87d47b85c5fcbf13b81736ed4/SampleLodeManager/src/python/auto_alias_suggest.py</source>
