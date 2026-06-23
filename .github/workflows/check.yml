@@ -41,8 +41,10 @@ jobs:
         run: |
           luarocks install luacheck
           eval "$(luarocks path)"
+          set +e
           luacheck --config .luacheckrc SampleLodeManager/src tests --no-color
           ec=$?
+          set -e
           # Exit 1 = warnings only (legacy codebase); fail only on syntax/undefined errors (2+).
           if [ "$ec" -ge 2 ]; then exit "$ec"; fi
       - name: Syntax check (luac -p)
