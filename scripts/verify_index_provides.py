@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# @noindex
 """Verify index.xml lists every @provides [nomain] src/ path from the entry script.
 
 Usage:

@@ -1,3 +1,4 @@
+-- @noindex
 require("spec_helper")
 local key_bpm = require("lib.core.key_bpm_utils")
 

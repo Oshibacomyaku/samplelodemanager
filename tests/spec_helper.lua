@@ -1,3 +1,4 @@
+-- @noindex
 -- Test path bootstrap for Sample Lode Manager (no REAPER required).
 local function repo_root()
   local info = debug.getinfo(1, "S")

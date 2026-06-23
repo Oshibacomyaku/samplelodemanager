@@ -1,3 +1,4 @@
+-- @noindex
 require("spec_helper")
 local tag_inference = require("lib.db.tag_inference")
 

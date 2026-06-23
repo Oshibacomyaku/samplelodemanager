@@ -15,8 +15,8 @@ jobs:
       - name: Install reapack-index
         run: gem install reapack-index
       - name: Validate packages
-        # tests/*.lua are busted specs, not ReaPack packages (no @version).
-        run: reapack-index --check -i tests .
+        # tests/ and scripts/ are dev-only; not ReaPack packages (no @version).
+        run: reapack-index --check -i tests -i scripts .
       # Multi-file パッケージは index に <source file="src/..."> が無いと、ReaPack がエントリだけ更新して app.lua が古いまま残る
       - name: Verify index lists src/* sources
         run: |
@@ -33,23 +33,22 @@ jobs:
     steps:
       - name: Fetch repository
         uses: actions/checkout@v4
-      - name: Install Lua toolchain
+      - uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.4.6"
+      - uses: leafo/gh-actions-luarocks@v4
+      - name: Install test tools
         run: |
-          sudo apt-get install -yy lua5.4 liblua5.4-dev luarocks build-essential
-          luarocks install --lua-version=5.4 luacheck
-          luarocks install --lua-version=5.4 busted
-          echo "$HOME/.luarocks/bin" >> $GITHUB_PATH
+          luarocks install luacheck
+          luarocks install busted
       - name: Luacheck (static analysis)
         run: |
-          eval "$(luarocks path)"
           luacheck SampleLodeManager/src --no-color
           luacheck tests --no-color
       - name: Syntax check (luac -p)
         run: |
           find SampleLodeManager/src -name '*.lua' -print0 | while IFS= read -r -d '' f; do
-            luac5.4 -p "$f" || exit 1
+            luac -p "$f" || exit 1
           done
       - name: Busted unit tests
-        run: |
-          eval "$(luarocks path)"
-          busted --verbose -o TAP
+        run: busted --verbose -o TAP

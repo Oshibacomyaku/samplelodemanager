@@ -1,3 +1,4 @@
+-- @noindex
 require("spec_helper")
 local resource_paths = require("lib.core.resource_paths")
 
